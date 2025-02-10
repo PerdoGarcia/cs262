@@ -3,6 +3,7 @@ from datetime import datetime
 import tkinter as tk
 from tkinter import messagebox
 from tkinter import ttk
+import socket
 
 class CentralState:
     def __init__(self):
@@ -10,14 +11,33 @@ class CentralState:
         self.messages = {}
         self.accounts = []
         self.socket = None
+        self.host = "127.0.0.1"
+        self.port = 54400
 
     def connect_to_server(self):
-        pass
+        try:
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.connect((self.host, self.port))
+            # TODO add thread to listen from server
+        except Exception as e:
+            print("Failed to connect to server.")
+            print(e)
 
     def read_from_server(self):
+        # finish implementation
+        while True:
+            data = self.socket.recv(1024)
+            if not data:
+                break
+            print(f"Received: {data.decode('utf-8')}")
         pass
 
-    def write_to_server(self):
+    def write_to_server(self, message):
+        try:
+            self.socket.sendall(message.ecode("utf-8"))
+        except Exception as e:
+            print("Failed to send message to server.")
+            print(e)
         pass
 
     def get_messages(self):

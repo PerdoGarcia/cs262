@@ -4,7 +4,7 @@ import socket
 import selectors
 import types
 # Helpers for processing each file, separated for conciseness
-from server_helpers import *
+# from server_helpers import *
 sel = selectors.DefaultSelector()
 
 # TODO: CHANGE THIS DO NOT HARD CODE
@@ -70,7 +70,7 @@ def service_connection(key, mask):
         sock.close()
     if mask & selectors.EVENT_WRITE:
         if data.outb:
-            # TODO: change this line to process as we need to 
+            # TODO: change this line to process as we need to
             in_data = data.outb.decode("utf-8")
             # Get 2 letter request type code
             request_type = in_data[:2]
@@ -109,7 +109,7 @@ def service_connection(key, mask):
                     else:
                         # Pull just the error code out when we are using custom wire protocol
                         return_data = call_info[:3]
-                    
+
                 case "LA":
                     # list accounts
                     pass
