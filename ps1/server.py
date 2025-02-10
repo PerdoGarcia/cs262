@@ -5,6 +5,7 @@ import selectors
 import types
 # Helpers for processing each file, separated for conciseness
 from server_helpers import *
+import datetime
 sel = selectors.DefaultSelector()
 
 # TODO: CHANGE THIS DO NOT HARD CODE
@@ -45,6 +46,34 @@ def logout(username):
         accounts[username]["loggedIn"] = False
         return [True, ""]
 
+def list_accounts(username):
+    # TODO: discuss how to implement this
+    pass
+
+def send_message(to_username, message):
+    # TODO: how do we know who's sending the message?
+    if to_username not in accounts:
+        return [False, "ER1: account with that username does not exist"]
+    
+    if accounts[to_username]["loggedIn"] == True:
+        # Figure out what to do here
+        pass
+    else:
+        # The receiving user is logged out, add the message to their list of messages
+        message_dict = {"sender": "temp", "timestamp": str(datetime.datetime.now()), "message": message, "messageID": 0, "delivered": False}
+        accounts[to_username]["messageHistory"].append(message_dict)
+
+def read_message(num):
+    # get messages from the end?
+    pass
+
+# TODO: FIGURE OUT WHAT TO PASS IN
+def delete_message():
+    pass
+
+# TODO: FIGURE OUT WHAT TO PASS IN
+def delete_account():
+    pass
 
 
 # HELPERS FOR DEALING WITH SOCKETS
@@ -57,7 +86,7 @@ def accept_wrapper(sock):
     sel.register(conn, events, data=data)
 
 # NOTE: CURRENTLY WIRE PROTOCOL VERSION
-def service_connection(key, mask):
+def service_connection_wp(key, mask):
     sock = key.fileobj
     data = key.data
     if mask & selectors.EVENT_READ:
@@ -115,6 +144,7 @@ def service_connection(key, mask):
                     pass
                 case "SE":
                     # send message
+                    # should we send a notif to the receiver's socket if they are logged on?
                     pass
                 case "RE":
                     # read message
@@ -145,7 +175,10 @@ if __name__ == "__main__":
                 if key.data is None:
                     accept_wrapper(key.fileobj)
                 else:
-                    service_connection(key, mask)
+                    # Version that understands the wire protocol
+                    service_connection_wp(key, mask)
+                    # Version that understands json
+                    # service_connection_json(key, mask)
     except KeyboardInterrupt:
         print("Caught keyboard interrupt, exiting")
     finally:
