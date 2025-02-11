@@ -11,6 +11,7 @@ class CentralState:
         self.messages = {}
         self.accounts = []
         self.socket = None
+        self.is_connected = False
         self.host = "127.0.0.1"
         self.port = 54400
 
@@ -18,27 +19,51 @@ class CentralState:
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.connect((self.host, self.port))
-            # TODO add thread to listen from server
+            self.is_connected = True
+            print("Connected to server.")
+            return True
         except Exception as e:
             print("Failed to connect to server.")
             print(e)
+            self.is_connected = False
+            return False
 
-    def read_from_server(self):
-        # finish implementation
-        while True:
-            data = self.socket.recv(1024)
-            if not data:
-                break
-            print(f"Received: {data.decode('utf-8')}")
-        pass
 
-    def write_to_server(self, message):
-        try:
-            self.socket.sendall(message.ecode("utf-8"))
-        except Exception as e:
-            print("Failed to send message to server.")
-            print(e)
-        pass
+    # def read_from_server(self):
+    #     while self.is_connected:
+    #         try:
+    #             data = self.socket.recv(1024)
+    #             if not data:
+    #                 print("Server connection closed")
+    #                 self.is_connected = False
+    #                 break
+
+    #             message = data.decode('utf-8')
+    #             print(f"Received: {message}")
+
+    #         except Exception as e:
+    #             print("Error reading from server:", e)
+    #             self.is_connected = False
+    #             break
+
+    #     print("Read thread terminated")
+
+
+    # def write_to_server(self, message):
+    #     if not self.is_connected:
+    #         print("Not connected to server")
+    #         return False
+
+    #     try:
+    #         with self.socket as s:
+    #             s.connect((self.host, self.port))
+    #             s.sendall(message.encode('utf-8'))
+    #             print(f"Sent: {message}")
+    #             return True
+    #     except Exception as e:
+    #         print("Failed to write to the server.")
+    #         print(e)
+    #         return False
 
     def get_messages(self):
         pass
@@ -65,6 +90,7 @@ class App(tk.Tk):
 
         self.state = CentralState()
         self.state.connect_to_server()
+        print("hi")
 
         self.container = tk.Frame(self)
         self.container.pack(side="top", fill="both", expand=True)
@@ -76,7 +102,7 @@ class App(tk.Tk):
 
     def show_frame(self, page):
         if page not in self.frames:
-            self.frames[page] = page(self.container, self)
+            self.frames[page] = page(self.container, self, self.state)
             self.frames[page].grid(row=0, column=0, sticky="nsew")
 
         self.frames[page].tkraise()
@@ -88,13 +114,15 @@ class App(tk.Tk):
         pass
 
     def run(self):
+
         self.mainloop()
 
 
 class Onboarding(tk.Frame):
-    def __init__(self, parent, controller):
+    def __init__(self, parent, controller, state : CentralState):
         tk.Frame.__init__(self, parent)
         self.controller = controller
+        self.state = state
 
         self.label = tk.Label(self, text="Sign in")
 
@@ -110,20 +138,18 @@ class Onboarding(tk.Frame):
         self.textbox_password = tk.Entry(self)
         self.textbox_password.grid(row=1, column=1)
 
-        # self.check_state = tk.IntVar()
-        # self.check.pack(padx=10, pady=10)
-
-        self.button = tk.Button(self, text="Login", command=self.on_button_click)
+        self.button = tk.Button(self, text="Login", command=self.handle_login)
         self.button.grid(row=2, column=1)
-        self.button = tk.Button(self, text="Create Account", command=self.on_button_click)
+        self.button = tk.Button(self, text="Create Account", command=self.handle_create_account)
         self.button.grid(row=2, column=2)
 
 
-    def on_button_click(self):
-        self.controller.show_frame(Navigation)
+    # def on_button_click(self):
+
+    #     self.controller.show_frame(Navigation)
 
     def handle_login(self):
-        state = self.controller.get_state()
+        # state = self.controller.get_state()
         if not self.textbox_username.get() or not self.textbox_password.get():
             messagebox.showerror("Error", "Please fill in both username and password.")
             return
@@ -134,11 +160,22 @@ class Onboarding(tk.Frame):
         pass
 
     def handle_create_account(self):
+        if not self.textbox_username.get() or not self.textbox_password.get():
+            messagebox.showerror("Error", "Please fill in both username and password.")
+            return
+        else:
+            # self.state.create_account(self.textbox_username.get(), self.textbox_password.get())
+            # todo: hash password
+            hashed_password = self.textbox_password.get()
+            return_value = "CR" + self.textbox_username.get() + " " + hashed_password
+            print(return_value)
+            self.state.current_user = self.textbox_username.get()
+            self.state.write_to_server(return_value)
         pass
 
 
 class Navigation(tk.Frame):
-    def __init__(self, parent, controller):
+    def __init__(self, parent, controller, state : CentralState):
         tk.Frame.__init__(self, parent)
         self.controller = controller
 
@@ -203,7 +240,7 @@ class Navigation(tk.Frame):
         self.controller.show_frame(Onboarding)
 
 class Chat(tk.Frame):
-    def __init__(self, parent, controller):
+    def __init__(self, parent, controller, state : CentralState):
         tk.Frame.__init__(self, parent)
         self.controller = controller
 
@@ -264,7 +301,7 @@ class Chat(tk.Frame):
             )
 
 class MessageDisplay(tk.Frame):
-    def __init__(self, parent, controller):
+    def __init__(self, parent, controller, state : CentralState):
         tk.Frame.__init__(self, parent)
         self.controller = controller
 
@@ -327,16 +364,18 @@ class MessageDisplay(tk.Frame):
 
     def delete_message(self):
         if self.message_list.curselection():
+            print(self.message_list.curselection())
             selection = self.message_list.curselection()[0]
             self.message_list.delete(selection)
             self.message_content.config(state='normal')
+            # c
             self.message_content.delete(1.0, tk.END)
             self.message_content.config(state='disabled')
         pass
 
 
 class SearchAccount(tk.Frame):
-    def __init__(self, parent, controller):
+    def __init__(self, parent, controller, state : CentralState):
         tk.Frame.__init__(self, parent)
         self.controller = controller
 
@@ -361,6 +400,7 @@ class SearchAccount(tk.Frame):
 
         self.results_text = tk.Text(self, wrap=tk.WORD, height=10)
         self.results_text.grid(row=2, column=0, columnspan=3, sticky="nsew", padx=10, pady=10)
+        self.displayed_accounts = ["pedro", "juan", "pablo"]
 
         self.update_accounts()
 
@@ -375,7 +415,7 @@ class SearchAccount(tk.Frame):
         self.results_text.delete(1.0, tk.END)
 
         state = self.controller.get_state()
-        displayed_accounts = state.accounts
+        displayed_accounts = ["pedro", "juan", "pablo"]
 
         if filter_text:
             displayed_accounts = [user for user in displayed_accounts if filter_text.lower() in user.lower()]

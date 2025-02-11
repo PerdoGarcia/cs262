@@ -13,9 +13,11 @@ PORT = 54400
 
 # TODO: flesh out this data structure if needed
 accounts = {}
+messageId = 0
 
 # HELPERS FOR SERVER ACTIONS
 def create_account(username, password):
+    print("Creating account")
     if username not in accounts:
         accounts[username] = {"loggedIn": True, "accountInfo": {"username": username, "password": password}, "messageHistory": []}
         return [True, ""]
@@ -45,34 +47,52 @@ def logout(username):
         accounts[username]["loggedIn"] = False
         return [True, ""]
 
-def list_accounts(username):
-    # TODO: discuss how to implement this
-    pass
+def list_accounts():
+    # Simply return all the accounts, searching for a subset is done on client-side
+    accountNames = list(accounts.keys())
+    return [True, accountNames]
 
-def send_message(to_username, message):
-    # TODO: how do we know who's sending the message?
+
+def send_message(from_username, to_username, message, time):
     if to_username not in accounts:
         return [False, "ER1: account with that username does not exist"]
-    
+
     if accounts[to_username]["loggedIn"] == True:
-        # Figure out what to do here
-        pass
+        message_dict = {"sender": from_username, "timestamp": time, "message": message, "messageId": messageId, "delivered": True}
+        accounts[to_username]["messageHistory"].append(message_dict)
+        # TODO: Figure out what to do here to notify the logged-in user
     else:
         # The receiving user is logged out, add the message to their list of messages
-        message_dict = {"sender": "temp", "timestamp": str(datetime.datetime.now()), "message": message, "messageID": 0, "delivered": False}
+        message_dict = {"sender": from_username, "timestamp": time, "message": message, "messageId": messageId, "delivered": False}
         accounts[to_username]["messageHistory"].append(message_dict)
+    # Each time a message is sent the messageId counter goes up
+    messageId += 1
 
-def read_message(num):
+def read_message(username, num):
     # get messages from the end?
-    pass
+    num_read = 0
+    returned_messages = []
+    for message in accounts[username]["messageHistory"]:
+        if message["delivered"] == False:
+            returned_messages.append(message)
+            num_read += 1
+            if num_read == num:
+                break
+    return [True, {"num_read": num_read, "messages": returned_messages}]
 
-# TODO: FIGURE OUT WHAT TO PASS IN
-def delete_message():
-    pass
+def delete_message(username, id):
+    if username not in accounts:
+        return [False, "ER1: attempting to delete a message from an account that does not exist"]
 
-# TODO: FIGURE OUT WHAT TO PASS IN
-def delete_account():
-    pass
+    for i in range(len(accounts[username]["messageHistory"])):
+        if accounts[username]["messageHistory"][i]["messageId"] == id:
+            del accounts[username]["messageHistory"][i]
+            return [True, ""]
+    return [False, "ER2: account did not receive message with that id"]
+
+def delete_account(username):
+    del accounts[username]
+    return [True, ""]
 
 
 # HELPERS FOR DEALING WITH SOCKETS
@@ -110,6 +130,7 @@ def service_connection_wp(key, mask):
             match request_type:
                 case "CR":
                     # create account
+                    print(in_data)
                     username, password = in_data.split(" ")
                     call_info = create_account(username, password)
                     if call_info[0] == True:
@@ -140,20 +161,44 @@ def service_connection_wp(key, mask):
 
                 case "LA":
                     # list accounts
-                    pass
+                    acct_names = list_accounts()[1]
+                    return_data = "LI" + " ".join(acct_names)
+
                 case "SE":
+                    from_username, to_username, time, message = in_data.split(" ")
+                    call_info = send_message(from_username, to_username, message, time)
                     # send message
-                    # should we send a notif to the receiver's socket if they are logged on?
-                    pass
+                    # TODO: should we send a notif to the receiver's socket if they are logged on?
+                    if call_info[0] == True:
+                        return_data = "SET"
+                    else:
+                        # Pull just the error code out when we are using custom wire protocol
+                        return_data = call_info[:3]
+
                 case "RE":
-                    # read message
-                    pass
+                    username, num = in_data.split(" ")
+                    call_info = read_message(username, num)
+                    if call_info[0] == True:
+                        return_data = "RET" + str(call_info[1]["num_read"])
+                        for message in call_info[1]["messages"]:
+                            return_data += " " + str(len(message)) + " " + message
+                    else:
+                        # Pull just the error code out when we are using custom wire protocol
+                        return_data = call_info[:3]
+
                 case "DM":
-                    #delete message
-                    pass
+                    # delete message
+                    username, id = in_data.split(" ")
+                    call_info = delete_message(username, id)
+                    if call_info[0] == True:
+                        return_data = "SET"
+                    else:
+                        # Pull just the error code out when we are using custom wire protocol
+                        return_data = call_info[:3]
+
                 case "DA":
-                    # delete account
-                    pass
+                    username = in_data
+                    return "DAT"
 
             # return_data = trans_to_pig_latin(data.outb.decode("utf-8"))
             return_data = return_data.encode("utf-8")
@@ -171,9 +216,13 @@ if __name__ == "__main__":
         while True:
             events = sel.select(timeout=None)
             for key, mask in events:
-                if key.data is None:
+
+                print("Recieved data")
+                print(key.data == None)
+                if key.data == None:
                     accept_wrapper(key.fileobj)
                 else:
+                    print("processing request: " + key.data.outb.decode("utf-8"))
                     # Version that understands the wire protocol
                     service_connection_wp(key, mask)
                     # Version that understands json
