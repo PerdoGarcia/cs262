@@ -19,13 +19,14 @@ messageId = 0
 def create_account(username, password):
     print("Creating account")
     if username not in accounts:
-        accounts[username] = {"loggedIn": True, "accountInfo": {"username": username, "password": password}, "messageHistory": []}
+        accounts[username] = {"socket": None, "data": None, "loggedIn": True, "accountInfo": {"username": username, "password": password}, "messageHistory": []}
         return [True, ""]
     else:
         # error: account is already in the database
         return [False, "ER1: account is already in database"]
 
-def login(username, password):
+def login(username, password, sock, data):
+    # TODO: when a user logs in bind their username to the socket that requested it if it succeeded
     if username not in accounts:
         # error: account with that username does not exist
         return [False, "ER1: account with that username does not exist"]
@@ -33,6 +34,9 @@ def login(username, password):
         if accounts["accountInfo"]["username"] == username and accounts["accountInfo"]["password"] == password:
             # if you try to login twice for some reason nothing happens
             accounts[username]["loggedIn"] = True
+            # Bind user to a certain socket on login
+            accounts[username]["socket"] = sock
+            accounts[username]["data"] = data
             return [True, ""]
         else:
             # error: incorrect password
@@ -45,6 +49,9 @@ def logout(username):
     else:
         # if you try to logout twice for some reason nothing happens
         accounts[username]["loggedIn"] = False
+        # Remove user from a socket at logout
+        accounts[username]["socket"] = None
+        accounts[username]["data"] = None
         return [True, ""]
 
 def list_accounts():
@@ -61,12 +68,14 @@ def send_message(from_username, to_username, message, time):
         message_dict = {"sender": from_username, "timestamp": time, "message": message, "messageId": messageId, "delivered": True}
         accounts[to_username]["messageHistory"].append(message_dict)
         # TODO: Figure out what to do here to notify the logged-in user
+        # Do we somehow send it immediately to through the socket to the 2nd client?
     else:
         # The receiving user is logged out, add the message to their list of messages
         message_dict = {"sender": from_username, "timestamp": time, "message": message, "messageId": messageId, "delivered": False}
         accounts[to_username]["messageHistory"].append(message_dict)
     # Each time a message is sent the messageId counter goes up
     messageId += 1
+    return [True, message_dict]
 
 def read_message(username, num):
     # get messages from the end?
@@ -78,6 +87,8 @@ def read_message(username, num):
             num_read += 1
             if num_read == num:
                 break
+
+    # TODO: Add messageId here
     return [True, {"num_read": num_read, "messages": returned_messages}]
 
 def delete_message(username, id):
@@ -100,7 +111,8 @@ def accept_wrapper(sock):
     conn, addr = sock.accept()
     print(f"Accepted connection from {addr}")
     conn.setblocking(False)
-    data = types.SimpleNamespace(addr=addr, inb=b"", outb=b"")
+    data = types.SimpleNamespace(addr=addr, inb=b"", outb=b"", user=b"")
+    # let alice know that we dont need read and write
     events = selectors.EVENT_READ | selectors.EVENT_WRITE
     sel.register(conn, events, data=data)
 
@@ -111,15 +123,19 @@ def service_connection_wp(key, mask):
     if mask & selectors.EVENT_READ:
         recv_data = sock.recv(1024)
         if recv_data:
+            print("RECEIVED RAW DATA:", recv_data)
             data.outb += recv_data
         else:
             print(f"Closing connection to {data.addr}")
-        sel.unregister(sock)
-        sock.close()
+            sel.unregister(sock)
+            sock.close()
     if mask & selectors.EVENT_WRITE:
+        if not data.outb:
+            return
         if data.outb:
             # TODO: change this line to process as we need to
             in_data = data.outb.decode("utf-8")
+            print("PROCESSING MESSAGE:", in_data)
             # Get 2 letter request type code
             request_type = in_data[:2]
             # The rest of the sent over data is the data needed to complete the request
@@ -133,6 +149,7 @@ def service_connection_wp(key, mask):
                     print(in_data)
                     username, password = in_data.split(" ")
                     call_info = create_account(username, password)
+                    print(accounts)
                     if call_info[0] == True:
                         return_data = "CRT"
                     else:
@@ -142,7 +159,7 @@ def service_connection_wp(key, mask):
                 case "LI":
                     # login
                     username, password = in_data.split(" ")
-                    call_info = login(username, password)
+                    call_info = login(username, password, sock, data)
                     if call_info[0] == True:
                         return_data = "LIT"
                     else:
@@ -162,15 +179,26 @@ def service_connection_wp(key, mask):
                 case "LA":
                     # list accounts
                     acct_names = list_accounts()[1]
-                    return_data = "LI" + " ".join(acct_names)
+                    return_data = "LAT" + " ".join(acct_names)
 
                 case "SE":
+                    print("SENDING MESSAGE", in_data)
                     from_username, to_username, time, message = in_data.split(" ")
                     call_info = send_message(from_username, to_username, message, time)
                     # send message
                     # TODO: should we send a notif to the receiver's socket if they are logged on?
                     if call_info[0] == True:
                         return_data = "SET"
+                        if accounts[to_username]["loggedIn"] == True:
+                            to_data = accounts[to_username]["data"]
+                            to_sock = accounts[to_username]["socket"]
+                            message_dict = call_info[1]
+                            sending_data = str(message_dict["messageId"]) + " " + message_dict["sender"] + " " + message_dict["timestamp"] + " " + str(len(message_dict["message"])) + message_dict["message"]
+                            # Send data to the logged in user's socket
+                            sending_data = sending_data.encode("utf-8")
+                            sent = to_sock.send(sending_data)
+                            to_data.outb = to_data.outb[sent:]
+
                     else:
                         # Pull just the error code out when we are using custom wire protocol
                         return_data = call_info[:3]
@@ -181,7 +209,7 @@ def service_connection_wp(key, mask):
                     if call_info[0] == True:
                         return_data = "RET" + str(call_info[1]["num_read"])
                         for message in call_info[1]["messages"]:
-                            return_data += " " + str(len(message)) + " " + message
+                            return_data += " " + str(message["messageId"]) + " " + message["sender"]  + " " + message["timestamp"] + " " + str(len(message["message"])) + message["message"]
                     else:
                         # Pull just the error code out when we are using custom wire protocol
                         return_data = call_info[:3]
@@ -212,17 +240,15 @@ if __name__ == "__main__":
     print("Listening on", (HOST, PORT))
     lsock.setblocking(False)
     sel.register(lsock, selectors.EVENT_READ, data=None)
+
     try:
         while True:
             events = sel.select(timeout=None)
             for key, mask in events:
 
-                print("Recieved data")
-                print(key.data == None)
-                if key.data == None:
+                if key.data is None:
                     accept_wrapper(key.fileobj)
                 else:
-                    print("processing request: " + key.data.outb.decode("utf-8"))
                     # Version that understands the wire protocol
                     service_connection_wp(key, mask)
                     # Version that understands json

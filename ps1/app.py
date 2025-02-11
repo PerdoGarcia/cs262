@@ -15,6 +15,12 @@ class CentralState:
         self.host = "127.0.0.1"
         self.port = 54400
 
+
+    def reset_state(self):
+        self.current_user = None
+        self.messages = {}
+
+
     def connect_to_server(self):
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -28,58 +34,90 @@ class CentralState:
             self.is_connected = False
             return False
 
+    def read_from_server(self):
+        while self.is_connected:
+            try:
+                data = self.socket.recv(1024)
+                if not data:
+                    print("Server connection closed")
+                    self.is_connected = False
+                    break
 
-    # def read_from_server(self):
-    #     while self.is_connected:
-    #         try:
-    #             data = self.socket.recv(1024)
-    #             if not data:
-    #                 print("Server connection closed")
-    #                 self.is_connected = False
-    #                 break
+                message = data.decode('utf-8')
+                print(f"Received: {message}")
+                self.handle_reads(message)
+            except Exception as e:
+                print("Error reading from server:", e)
+                self.is_connected = False
+                break
 
-    #             message = data.decode('utf-8')
-    #             print(f"Received: {message}")
+    def handle_reads(self, server_message):
+        request_type = server_message[:3]
+        data = server_message[3:]
 
-    #         except Exception as e:
-    #             print("Error reading from server:", e)
-    #             self.is_connected = False
-    #             break
+        match request_type:
+            case "CRT":
+                self.current_user = data
+                pass
+            case "LIT":
+                self.current_user = data
+                pass
+            case "LOT":
+                self.reset_state()
+                pass
+            case "LAT":
+                self.accounts = data.split(" ")
+                print("Active Accounts:", ", ".join(self.accounts))
+            case "RET":
+                parts = data.split(" ")
+                num_read = int(parts[0])
+                self.messages = []
+                index = 1
 
-    #     print("Read thread terminated")
+                for _ in range(num_read):
+                    message_id = parts[index]
+                    sender = parts[index + 1]
+                    timestamp = parts[index + 2]
+                    message_length = int(parts[index + 3])
+                    message_content = " ".join(parts[index + 4 : index + 4 + message_length])
+                    index += 4 + message_length
+
+                    self.messages.append({
+                        "Message ID": message_id,
+                        "Sender": sender,
+                        "Timestamp": timestamp,
+                        "Message": message_content
+                    })
+
+                print(f"Retrieved {num_read} messages:")
+                for msg in self.messages:
+                    print(f"ID: {msg['Message ID']}, From: {msg['Sender']}, Time: {msg['Timestamp']}")
+                    print(f"Message: {msg['Message']}\n")
+            case "SET":
+                pass
+            case "ER0":
+                pass
+            case "DAT":
+                pass
+            case _:
+                print(server_message)
 
 
-    # def write_to_server(self, message):
-    #     if not self.is_connected:
-    #         print("Not connected to server")
-    #         return False
+    # perhaps create a thread on the client for reading
+    # and create a thread on the client for writing
+    def write_to_server(self, message):
+        if not self.is_connected:
+            print("Not connected to server")
+            return False
 
-    #     try:
-    #         with self.socket as s:
-    #             s.connect((self.host, self.port))
-    #             s.sendall(message.encode('utf-8'))
-    #             print(f"Sent: {message}")
-    #             return True
-    #     except Exception as e:
-    #         print("Failed to write to the server.")
-    #         print(e)
-    #         return False
-
-    def get_messages(self):
-        pass
-
-    def send_message(self):
-        pass
-
-    def delete_message(self):
-        pass
-
-    def search_accounts(self):
-        pass
-
-    def delete_account(self):
-        pass
-
+        try:
+            self.socket.sendall(message.encode('utf-8'))
+            print(f"Sent: {message}")
+            return True
+        except Exception as e:
+            print("Failed to write to the server.")
+            print(e)
+            return False
 
 
 class App(tk.Tk):
@@ -89,8 +127,9 @@ class App(tk.Tk):
         self.geometry("800x600")
 
         self.state = CentralState()
-        self.state.connect_to_server()
-        print("hi")
+        connected = self.state.connect_to_server()
+        if connected:
+            threading.Thread(target=self.state.read_from_server, daemon=True).start()
 
         self.container = tk.Frame(self)
         self.container.pack(side="top", fill="both", expand=True)
@@ -110,11 +149,7 @@ class App(tk.Tk):
     def get_state(self):
         return self.state
 
-    def switch_applications(self):
-        pass
-
     def run(self):
-
         self.mainloop()
 
 
@@ -123,6 +158,7 @@ class Onboarding(tk.Frame):
         tk.Frame.__init__(self, parent)
         self.controller = controller
         self.state = state
+        self.current_users = state.accounts
 
         self.label = tk.Label(self, text="Sign in")
 
@@ -143,41 +179,56 @@ class Onboarding(tk.Frame):
         self.button = tk.Button(self, text="Create Account", command=self.handle_create_account)
         self.button.grid(row=2, column=2)
 
+    def refresh_accounts(self):
+        self.current_users = self.state.accounts
+        self.after(100, self.refresh_accounts)
 
-    # def on_button_click(self):
-
-    #     self.controller.show_frame(Navigation)
+    # gpt
+    def enhash(self, password):
+        # Simple shift of ASCII values and reversal
+        shifted = ''.join(chr((ord(c) + 5) % 128) for c in password)
+        return shifted[::-1]
 
     def handle_login(self):
-        # state = self.controller.get_state()
         if not self.textbox_username.get() or not self.textbox_password.get():
             messagebox.showerror("Error", "Please fill in both username and password.")
             return
         else:
             if self.textbox_username.get() in self.current_users:
-                print(self.current_users)
-                self.controller.show_frame(Navigation)
-        pass
+                hashed_password = self.enhash(self.textbox_password.get())
+                return_value = "LI" + self.textbox_username.get() + " " + hashed_password
+                if self.state.write_to_server(return_value):
+                    # todo do a check for a user existing
+                    self.after(100, self.check_login_success)
 
     def handle_create_account(self):
         if not self.textbox_username.get() or not self.textbox_password.get():
             messagebox.showerror("Error", "Please fill in both username and password.")
             return
         else:
-            # self.state.create_account(self.textbox_username.get(), self.textbox_password.get())
             # todo: hash password
-            hashed_password = self.textbox_password.get()
+            hashed_password = self.enhash(self.textbox_password.get())
             return_value = "CR" + self.textbox_username.get() + " " + hashed_password
             print(return_value)
             self.state.current_user = self.textbox_username.get()
-            self.state.write_to_server(return_value)
-        pass
+            if self.state.write_to_server(return_value):
+            # todo handle if user already exists
+                self.after(100, self.check_login_success)
+
+    def check_login_success(self):
+        if self.state.current_user is None:
+            messagebox.showerror("Error", "Login failed. Please try again.")
+        else:
+            self.state.current_user = self.textbox_username.get()
+
+            self.controller.show_frame(Navigation)
 
 
 class Navigation(tk.Frame):
     def __init__(self, parent, controller, state : CentralState):
         tk.Frame.__init__(self, parent)
         self.controller = controller
+        self.state = state
 
         title_label = tk.Label(self, text="Navigation page", font=("Arial", 24))
         title_label.pack(pady=20)
@@ -185,64 +236,64 @@ class Navigation(tk.Frame):
         button_frame = tk.Frame(self)
         button_frame.pack(pady=20)
 
-        send_messages_btn = tk.Button(
+        self.send_messages_btn = tk.Button(
             button_frame,
             text="Send Messages",
             command=lambda: controller.show_frame(Chat),
             width=20,
             height=2
         )
-        send_messages_btn.pack(pady=10)
+        self.send_messages_btn.pack(pady=10)
 
-        read_messages_btn = tk.Button(
+        self.read_messages_btn = tk.Button(
             button_frame,
             text="Read Messages",
             command=lambda: controller.show_frame(MessageDisplay),
             width=20,
             height=2
         )
-        read_messages_btn.pack(pady=10)
+        self.read_messages_btn.pack(pady=10)
 
-        search_account = tk.Button(
+        self.search_account = tk.Button(
             button_frame,
             text="Search Accounts",
             command=lambda: controller.show_frame(SearchAccount),
             width=20,
             height=2
         )
-        search_account.pack(pady=10)
+        self.search_account.pack(pady=10)
 
-        logout_btn = tk.Button(
+        self.logout_btn = tk.Button(
             self,
             text="Logout",
-            command=lambda: controller.show_frame(Onboarding),
+            command=self.handle_logout,
             width=10
         )
-        logout_btn.pack(pady=20)
+        self.logout_btn.pack(pady=20)
 
-        delete_account_btn = tk.Button(
+        self.delete_account_btn = tk.Button(
             self,
             text="Delete Account",
-            command=self.on_delete_account(),
+            command=self.on_delete_account,
             width=10
         )
-        delete_account_btn.pack(pady=20)
+        self.delete_account_btn.pack(pady=20)
 
     def on_delete_account(self):
-        state = self.controller.get_state()
-        # todo: delete account
-        self.controller.show_frame(Onboarding)
-        pass
+        if self.state.write_to_server("DA" + self.state.current_user):
+            self.state.reset_state()
+            self.controller.show_frame(Onboarding)
 
     def handle_logout(self):
-        state = self.controller.get_state()
-        state.current_user = None
-        self.controller.show_frame(Onboarding)
+        if self.state.write_to_server("LO" + self.state.current_user):
+            self.state.reset_state()
+            self.controller.show_frame(Onboarding)
 
 class Chat(tk.Frame):
     def __init__(self, parent, controller, state : CentralState):
         tk.Frame.__init__(self, parent)
         self.controller = controller
+        self.state = state
 
         self.grid_columnconfigure(1, weight=1)
 
@@ -273,15 +324,23 @@ class Chat(tk.Frame):
         self.status_label = tk.Label(self, text="")
         self.status_label.grid(row=3, column=0, columnspan=3, pady=10)
 
+        self.update_accounts()
+
+
+    def update_accounts(self):
+        self.state.write_to_server("LA")
+        self.after(100, self.update_accounts)
+
     def on_button_click(self):
         username = self.username_textbox.get()
         message = self.entry_textbox.get()
-        state = self.controller.get_state()
-        if message and username in state.accounts:
+        if message and username:
             # (TODO): validation
-            success = True
 
-            if success:
+            if username in self.state.accounts:
+                send_value = "SE" + self.state.current_user + " " + username + " " + (str(datetime.now()).replace(" ", "")) + " " + message
+                self.state.write_to_server(send_value)
+                # check if message was actually sent
                 self.status_label.config(
                     text="Email sent successfully!",
                     fg="green"
@@ -291,6 +350,7 @@ class Chat(tk.Frame):
                     text="Failed to send email.",
                     fg="red"
                 )
+                return
 
             self.entry_textbox.delete(0, tk.END)
             self.username_textbox.delete(0, tk.END)
@@ -299,12 +359,19 @@ class Chat(tk.Frame):
                 text="Please fill in both username and message.",
                 fg="red"
             )
+            return
+
+    def check_username(self, username):
+        # (TODO): Implement this method
+        return True
+        pass
 
 class MessageDisplay(tk.Frame):
     def __init__(self, parent, controller, state : CentralState):
         tk.Frame.__init__(self, parent)
         self.controller = controller
-
+        self.state = state
+        self.number_of_messages = 10
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 
@@ -335,34 +402,36 @@ class MessageDisplay(tk.Frame):
         self.paned.add(self.message_list)
         self.paned.add(self.message_content)
 
-        self.messages = [
-            "Message 1",
-            "Message 2",
-            "Message 3"
-        ]
+        self.messages = self.state.messages
 
         for msg in self.messages:
             self.message_list.insert(tk.END, msg)
 
-    def refrresh_messages(self):
-        # (TODO): Implement this method
-        state = self.controller.get_state()
-        state.get_messages()
-        pass
+    # do something with threads to listen for messages
+
+    def update_messages(self):
+        self.state.write_to_server("RE" + self.state.current_user + " " + str(self.number_of_messages))
+        self.after(1000, self.update_messages)
+
 
     def display_message(self, event):
-
         if not self.message_list.curselection():
             return
 
         selection = self.message_list.curselection()[0]
-        full_message = self.messages[selection]
+        full_message = self.state.messages[selection]
+
+        message_text = f"From: {full_message['Sender']}\n"
+        message_text += f"Time: {full_message['Timestamp']}\n"
+        message_text += f"Message: {full_message['Message']}"
+
         self.message_content.config(state='normal')
         self.message_content.delete(1.0, tk.END)
-        self.message_content.insert(1.0, full_message)
+        self.message_content.insert(1.0, message_text)
         self.message_content.config(state='disabled')
 
     def delete_message(self):
+        # todo deal with message deletion later
         if self.message_list.curselection():
             print(self.message_list.curselection())
             selection = self.message_list.curselection()[0]
@@ -378,6 +447,7 @@ class SearchAccount(tk.Frame):
     def __init__(self, parent, controller, state : CentralState):
         tk.Frame.__init__(self, parent)
         self.controller = controller
+        self.state = state
 
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(2, weight=1)
@@ -400,22 +470,19 @@ class SearchAccount(tk.Frame):
 
         self.results_text = tk.Text(self, wrap=tk.WORD, height=10)
         self.results_text.grid(row=2, column=0, columnspan=3, sticky="nsew", padx=10, pady=10)
-        self.displayed_accounts = ["pedro", "juan", "pablo"]
 
         self.update_accounts()
 
     def update_accounts(self):
-        state = self.controller.get_state()
-        state.search_accounts()
-
-        self.after(100, self.display_accounts)
+        self.state.write_to_server("LA")
+        self.display_accounts()
+        self.after(100, self.update_accounts)
 
     def display_accounts(self, filter_text=None):
         self.results_text.config(state='normal')
         self.results_text.delete(1.0, tk.END)
 
-        state = self.controller.get_state()
-        displayed_accounts = ["pedro", "juan", "pablo"]
+        displayed_accounts = self.state.accounts
 
         if filter_text:
             displayed_accounts = [user for user in displayed_accounts if filter_text.lower() in user.lower()]
