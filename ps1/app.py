@@ -114,7 +114,6 @@ class CentralState:
                 pass
 
             case "SEL":
-                print("message recieved while logged in", data)
                 parts = data.split(" ")
                 message_id = parts[0]
                 sender = parts[1]
@@ -278,6 +277,7 @@ class CentralState:
             case "SET":
                 print("Sending message success")
             case "SEL":  # Received message
+                print(self.messages)
                 self.messages.append({
                     "messageId": json_data["messageId"],
                     "sender": json_data["sender"],

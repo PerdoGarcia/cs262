@@ -249,6 +249,7 @@ def read_message(username, num):
     # Go through message array and append undelivered messages
     num_read = 0
     returned_messages = []
+    print("messages", accounts[username]["messageHistory"])
     for message in accounts[username]["messageHistory"]:
         if message["delivered"] == False:
             returned_messages.append(message)
@@ -638,6 +639,7 @@ def service_connection_json(key, mask):
                             # to_data = accounts[to_username]["data"]
                             to_sock = accounts[to_username]["socket"]
                             message_dict = call_info[1]
+                            message_dict["type"] = "SEL"
                             # sending_data = "SEL" + str(message_dict["messageId"]) + " " + message_dict["sender"] + " " + message_dict["timestamp"] + " " + str(len(message_dict["message"])) + message_dict["message"]
                             sending_data = json.dumps(message_dict)
                             sending_data = str(len(sending_data)) + sending_data
@@ -657,11 +659,11 @@ def service_connection_json(key, mask):
                     call_info = read_message(username, num)
                     if call_info[0] == True:
                         return_data = call_info[1]
+                        return_data["type"] = "RET"
                     else:
                         # Pull the entire error message for json
                         return_data["errorMsg"] = call_info[1]
                     print("return_data", return_data)
-                    return return_data
 
                 case "DM":
                     # delete message
