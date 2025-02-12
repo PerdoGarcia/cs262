@@ -11,6 +11,7 @@ import json
 
 load_dotenv()
 
+
 class CentralState:
     def __init__(self):
         self.current_user = None
@@ -22,6 +23,7 @@ class CentralState:
         self.number_of_messages = 5
         self.host = os.environ.get("HOST_SERVER")
         self.port = int(os.environ.get("PORT_SERVER"))
+        self.is_json = True
 
 
     def reset_state(self):
@@ -41,8 +43,26 @@ class CentralState:
             self.is_connected = False
             return False
 
-
     def read_from_server(self):
+        if self.is_json:
+            self.read_from_server_json()
+        else:
+            self.read_from_server_wp()
+
+    def write_to_server(self, message):
+        if self.is_json:
+            return self.write_to_server_json(message)
+        else:
+            return self.write_to_server_wp(message)
+
+    def handle_reads(self, server_message):
+        if self.is_json:
+            self.handle_reads_json(server_message)
+        else:
+            self.handle_reads_wp(server_message)
+
+
+    def read_from_server_wp(self):
         while self.is_connected:
             try:
                 str_bytes = ""
@@ -84,7 +104,7 @@ class CentralState:
                 self.is_connected = False
                 break
 
-    def handle_reads(self, server_message):
+    def handle_reads_wp(self, server_message):
         print("Handling reads", server_message)
         request_type = server_message[:3]
         data = server_message[3:]
@@ -173,7 +193,7 @@ class CentralState:
 
     # perhaps create a thread on the client for reading
     # and create a thread on the client for writing
-    def write_to_server(self, message):
+    def write_to_server_wp(self, message):
         print("Writing to server", message)
         if not self.is_connected:
             print("Not connected to server")
@@ -233,7 +253,6 @@ class CentralState:
                     ret_data += data
                     cur_bytes += len(data.decode("utf-8"))
 
-                # Only difference is here - parse as JSON
                 message = ret_data.decode('utf-8')
                 json_data = json.loads(message)
                 self.handle_reads_json(json_data)
@@ -253,6 +272,7 @@ class CentralState:
             return
 
         request_type = json_data.get("type", "")
+        print("Request type:", request_type)
         match request_type:
             case "SEL":  # Received message
                 self.messages.append({
@@ -294,6 +314,23 @@ class CentralState:
                     "username": self.current_user,
                     "number": self.number_of_messages
                 })
+
+            case "ER0":
+                pass
+            case "ER1":
+                self.logged_in = False
+                self.reset_state()
+                print("some error", )
+            case "ER2":
+                self.logged_in = False
+                self.reset_state()
+                print("Acount is already in database or does not exist")
+            case "ER3":
+                print("attempting to delete a message from an account that does not exist")
+            case "DAT":
+                self.logged_in = False
+                self.reset_state()
+                pass
 
             case _:
                 print("Unknown message type:", request_type)
@@ -371,7 +408,10 @@ class Onboarding(tk.Frame):
         self.update_accounts()
 
     def update_accounts(self):
-        self.state.write_to_server("LA")
+        if self.state.is_json:
+            self.state.write_to_server_json({"type": "LA"})
+        else:
+            self.state.write_to_server("LA")
         self.after_id = self.after(500, self.update_accounts)
 
     def leave_to_navigation(self):
@@ -401,7 +441,14 @@ class Onboarding(tk.Frame):
 
         if username in self.state.accounts:
             hashed_password = self.enhash(password)
-            return_value = "LI" + username + " " + hashed_password
+            if self.state.is_json:
+                return_value = {
+                    "type": "LI",
+                    "username": username,
+                    "password": hashed_password
+                }
+            else:
+                return_value = "LI" + username + " " + hashed_password
             if self.state.write_to_server(return_value):
                 self.state.current_user = username
                 self.after(500, self.check_login_success)
@@ -424,7 +471,14 @@ class Onboarding(tk.Frame):
             return
 
         hashed_password = self.enhash(password)
-        return_value = "CR" + username + " " + hashed_password
+        if self.state.is_json:
+            return_value = {
+                "type": "CR",
+                "username": username,
+                "password": hashed_password
+            }
+        else:
+            return_value = "CR" + username + " " + hashed_password
         if self.state.write_to_server(return_value):
             # Store these for after we get CRT response
             self.pending_username = username
@@ -434,7 +488,14 @@ class Onboarding(tk.Frame):
     def complete_account_creation(self):
         # Only proceed with login if we got CRT confirmation
         if self.pending_username and self.pending_password:
-            login_value = "LI" + self.pending_username + " " + self.pending_password
+            if self.state.is_json:
+                login_value = {
+                    "type": "LI",
+                    "username": self.pending_username,
+                    "password": self.pending_password
+                }
+            else:
+                login_value = "LI" + self.pending_username + " " + self.pending_password
             self.state.current_user = self.pending_username
             if self.state.write_to_server(login_value):
                 self.after(500, self.check_login_success)
@@ -505,12 +566,26 @@ class Navigation(tk.Frame):
         self.delete_account_btn.pack(pady=20)
 
     def on_delete_account(self):
-        if self.state.write_to_server("DA" + self.state.current_user):
+        if self.state.is_json:
+            message_to_write = {
+                "type": "DA",
+                "username": self.state.current_user
+            }
+        else:
+            message_to_write = "DA" + self.state.current_user
+        if self.state.write_to_server(message_to_write):
             self.state.reset_state()
             self.controller.show_frame(Onboarding)
 
     def handle_logout(self):
-        if self.state.write_to_server("LO" + self.state.current_user):
+        if self.state.is_json:
+            message_to_write = {
+                "type": "LO",
+                "username": self.state.current_user
+            }
+        else:
+            message_to_write = "LO" + self.state.current_user
+        if self.state.write_to_server(message_to_write):
             self.state.reset_state()
             self.state.is_logged_in = False
             self.controller.show_frame(Onboarding)
@@ -558,7 +633,10 @@ class Chat(tk.Frame):
         self.controller.show_frame(Navigation)
 
     def update_accounts(self):
-        self.state.write_to_server("LA")
+        if self.state.is_json:
+            self.state.write_to_server_json({"type": "LA"})
+        else:
+            self.state.write_to_server("LA")
         self.after_id = self.after(500, self.update_accounts)
 
     def on_button_click(self):
@@ -574,7 +652,16 @@ class Chat(tk.Frame):
             return
 
         timestamp = str(datetime.now()).replace(" ", "")
-        send_value = f"SE{self.state.current_user} {username} {timestamp} {message}"
+        if self.state.is_json:
+            send_value = {
+                "type": "SE",
+                "from_username": self.state.current_user,
+                "to_username": username,
+                "timestamp": timestamp,
+                "message": message
+            }
+        else:
+            send_value = f"SE{self.state.current_user} {username} {timestamp} {message}"
 
         if self.state.write_to_server(send_value):
             self.status_label.config(text="Message sent successfully!", fg="green")
@@ -661,8 +748,14 @@ class MessageDisplay(tk.Frame):
                 # Clear current display
                 self.message_list.delete(0, tk.END)
                 self.messages = []
-
-                self.state.write_to_server("RE" + self.state.current_user + " " + str(self.number_of_messages))
+                if self.state.is_json:
+                    self.state.write_to_server_json({
+                        "type": "RE",
+                        "username": self.state.current_user,
+                        "number": self.number_of_messages
+                    })
+                else:
+                    self.state.write_to_server("RE" + self.state.current_user + " " + str(self.number_of_messages))
                 print("Sent request for", self.number_of_messages, "messages")
 
             else:
@@ -674,7 +767,7 @@ class MessageDisplay(tk.Frame):
 
     def refresh_page(self):
         self.message_list.delete(0, tk.END)
-        self.messages = self.state.messages.copy()  # Ensure it's in sync
+        self.messages = self.state.messages.copy()
 
         for msg in self.messages:
             formatted_msg = f"From: {msg['sender']}: {msg['message']} \n\n At: {msg['timestamp']}"
@@ -685,10 +778,17 @@ class MessageDisplay(tk.Frame):
     def update_messages(self):
         print("displaying self.state.messages", self.state.messages)
         print("displaying self.messages", self.messages)
-        if not self.state.current_user or not self.state.is_logged_in:
         # We're logged out, stop updating messages
+        if not self.state.current_user or not self.state.is_logged_in:
             return
-        self.state.write_to_server("RE" + self.state.current_user + " " + str(self.number_of_messages))
+        if self.state.is_json:
+            self.state.write_to_server_json({
+                "type": "RE",
+                "username": self.state.current_user,
+                "number": self.number_of_messages
+            })
+        else:
+            self.state.write_to_server("RE" + self.state.current_user + " " + str(self.number_of_messages))
 
         # Only update display if messages have actually chaanged
         if self.state.messages != self.messages:
@@ -730,9 +830,14 @@ class MessageDisplay(tk.Frame):
             selection = self.message_list.curselection()[0]
             message_to_delete = self.messages[selection]
             message_id = message_to_delete["messageId"]
-
-            delete_command = "DM" + self.state.current_user + " " + message_id
-            print(f"Sending delete command: {delete_command}")
+            if self.state.is_json:
+                delete_command = {
+                    "type": "DM",
+                    "username": self.state.current_user,
+                    "messageId": message_id
+                }
+            else:
+                delete_command = "DM" + self.state.current_user + " " + message_id
 
             if self.state.write_to_server(delete_command):
                 print("Message deleted successfully")
