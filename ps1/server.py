@@ -78,7 +78,7 @@ def create_account(username, password):
     Parameters
     ----------
     username : str
-        The desired username of the account 
+        The desired username of the account
     password : str
         The desired password of the account
 
@@ -117,7 +117,7 @@ def login(username, password, sock):
 
     Notes
     -----
-    Attempting to login to the same account twice does not produce an error. 
+    Attempting to login to the same account twice does not produce an error.
     The second login attempt will return success, and the user will remain logged in.
     """
     if username not in accounts:
@@ -151,7 +151,7 @@ def logout(username):
 
     Notes
     -----
-    Attempting to logout of the same account twice does not produce an error. 
+    Attempting to logout of the same account twice does not produce an error.
     The second logout attempt will return success, and the user will remain logged out.
     """
     if username not in accounts:
@@ -203,8 +203,8 @@ def send_message(from_username, to_username, message, time):
     -------
     list
         list[0] is always True. This function cannot fail.
-        list[1] is dictionary containing the the information that is now stored in the server about the 
-        message that was sent. This dictionary has the following keys: sender, timestamp, message, messageId, 
+        list[1] is dictionary containing the the information that is now stored in the server about the
+        message that was sent. This dictionary has the following keys: sender, timestamp, message, messageId,
         and delivered.
     """
     global messageId
@@ -240,8 +240,8 @@ def read_message(username, num):
     -------
     list
         list[0] is always True. This function cannot fail.
-        list[1] is dictionary containing two pieces of data. 
-        list[1]["num_read"] is the number of messages read, which may be less than num if the user 
+        list[1] is dictionary containing two pieces of data.
+        list[1]["num_read"] is the number of messages read, which may be less than num if the user
         had less than num undelivered messages.
         list[1]["messages"] is a list of dictionaries containint information about the messages that were read.
         Each message has the following keys: sender, timestamp, message, messageId, and delivered.
