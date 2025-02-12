@@ -276,14 +276,16 @@ def delete_message(username, id):
         list[0] is True or False, and indicates if the user deleted the requested message successfully
         list[1] is an empty string on success and an error message on failure
     """
+    print("Deleting message", id, "from", username)
     if username not in accounts:
-        return [False, "ER1: attempting to delete a message from an account that does not exist"]
-
+        return [False, "ER3: attempting to delete a message from an account that does not exist"]
+    # parsing error
+    message_id = int(id)
     for i in range(len(accounts[username]["messageHistory"])):
-        if accounts[username]["messageHistory"][i]["messageId"] == id:
+        if accounts[username]["messageHistory"][i]["messageId"] == message_id:
             del accounts[username]["messageHistory"][i]
             return [True, ""]
-    return [False, "ER2: account did not receive message with that id"]
+    return [False, "ER4: account did not receive message with that id"]
 
 def delete_account(username):
     """
@@ -402,10 +404,8 @@ def service_connection_wp(key, mask):
             match request_type:
                 case "CR":
                     # create account
-                    print(in_data)
                     username, password = in_data.split(" ")
                     call_info = create_account(username, password)
-                    print(accounts)
                     if call_info[0] == True:
                         return_data = "CRT"
                     else:
@@ -438,7 +438,6 @@ def service_connection_wp(key, mask):
                     return_data = "LAT" + " ".join(acct_names)
 
                 case "SE":
-                    print("SENDING MESSAGE", in_data)
                     in_data_array = in_data.split(" ")
                     from_username = in_data_array[0]
                     to_username = in_data_array[1]
@@ -454,7 +453,7 @@ def service_connection_wp(key, mask):
                             # to_data = accounts[to_username]["data"]
                             to_sock = accounts[to_username]["socket"]
                             message_dict = call_info[1]
-                            sending_data = "SEL" + str(message_dict["messageId"]) + " " + message_dict["sender"] + " " + message_dict["timestamp"] + " " + str(len(message_dict["message"])) + message_dict["message"]
+                            sending_data = "SEL" + str(message_dict["messageId"]) + " " + message_dict["sender"] + " " + message_dict["timestamp"] + " " + str(len(message_dict["message"])) + " "  + message_dict["message"]
                             sending_data = str(len(sending_data)) + sending_data
                             # Send data to the logged in user's socket
                             sending_data = sending_data.encode("utf-8")
@@ -479,6 +478,7 @@ def service_connection_wp(key, mask):
                 case "DM":
                     # delete message
                     username, id = in_data.split(" ")
+                    print("case DM Deleting message", id, "from", username)
                     call_info = delete_message(username, id)
                     if call_info[0] == True:
                         return_data = "DMT"
@@ -496,8 +496,6 @@ def service_connection_wp(key, mask):
                         return_data = call_info[1][:3]
 
             # return_data = trans_to_pig_latin(data.outb.decode("utf-8"))
-            print(str(len(return_data)))
-            print(return_data)
             return_data = str(len(return_data)) + return_data
             print("returning: ", return_data)
             return_data = return_data.encode("utf-8")
@@ -559,7 +557,7 @@ def service_connection_json(key, mask):
                     print(f"Closing connection to {data.addr}")
                     sel.unregister(sock)
                     sock.close()
-                    
+
 
     if mask & selectors.EVENT_WRITE:
         if not data.outb:
