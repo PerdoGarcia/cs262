@@ -11,37 +11,115 @@ sel = selectors.DefaultSelector()
 
 load_dotenv()
 
-# TODO: CHANGE THIS DO NOT HARD CODE
-HOST = os.environ.get("HOST_SERVER")
-PORT = int(os.environ.get("PORT_SERVER"))
-
 # TODO: flesh out this data structure if needed
 accounts = {}
 messageId = 0
 
 # HELPER FOR UNIT TESTING
 def get_accounts_structure():
+    """
+    Returns the accounts dictionary used by the server.
+
+    Parameters
+    ----------
+    None.
+
+    Returns
+    -------
+    accounts: dict
+
+    Notes
+    -----
+    This function is ONLY USED FOR TESTING.
+    """
     return accounts
 
 def reset_messageId():
+    """
+    Sets messageId to 0 in the server.
+
+    Parameters
+    ----------
+    None.
+
+    Returns
+    -------
+    None.
+
+    Notes
+    -----
+    This function is ONLY USED FOR TESTING.
+    """
     messageId = 0
 
 def clear_accounts_structure():
+    """
+    Clears the accounts data structure used by the server.
+
+    Parameters
+    ----------
+    None.
+
+    Returns
+    -------
+    None.
+
+    Notes
+    -----
+    This function is ONLY USED FOR TESTING.
+    """
     accounts.clear()
 
 # HELPERS FOR SERVER ACTIONS
 def create_account(username, password):
+    """
+    Attempts to create an account with the given username and password
+
+    Parameters
+    ----------
+    username : str
+        The desired username of the account 
+    password : str
+        The desired password of the account
+
+    Returns
+    -------
+    list
+        list[0] is True or False, and indicates if the account was created successfully
+        list[1] is an empty string on success and an error message on failure
+    """
     print("Creating account")
     if username not in accounts:
-        accounts[username] = {"socket": None, "data": None, "loggedIn": True, "accountInfo": {"username": username, "password": password}, "messageHistory": []}
+        accounts[username] = {"socket": None, "loggedIn": True, "accountInfo": {"username": username, "password": password}, "messageHistory": []}
         return [True, ""]
     else:
         # error: account is already in the database
         return [False, "ER1: account is already in database"]
 
-def login(username, password, sock, data):
-    # TODO fix login later talk with alice
-    # TODO: when a user logs in bind their username to the socket that requested it if it succeeded
+def login(username, password, sock):
+    """
+    Attempts to log a user in with the given username and password
+
+    Parameters
+    ----------
+    username : str
+        The inputted username of the account
+    password : str
+        The inputted password of the account
+    sock : socket
+        The socket the user is sending the request to log in from
+
+    Returns
+    -------
+    list
+        list[0] is True or False, and indicates if the user logged in successfully
+        list[1] is an empty string on success and an error message on failure
+
+    Notes
+    -----
+    Attempting to login to the same account twice does not produce an error. 
+    The second login attempt will return success, and the user will remain logged in.
+    """
     if username not in accounts:
         # error: account with that username does not exist
         return [False, "ER1: account with that username does not exist"]
@@ -51,13 +129,31 @@ def login(username, password, sock, data):
             accounts[username]["loggedIn"] = True
             # Bind user to a certain socket on login
             accounts[username]["socket"] = sock
-            accounts[username]["data"] = data
             return [True, ""]
         else:
             # error: incorrect password
             return [False, "ER2: incorrect password"]
 
 def logout(username):
+    """
+    Attempts to logout a user in with the given username and password
+
+    Parameters
+    ----------
+    username : str
+        The inputted username of the account to logout of
+
+    Returns
+    -------
+    list
+        list[0] is True or False, and indicates if the user logged out successfully
+        list[1] is an empty string on success and an error message on failure
+
+    Notes
+    -----
+    Attempting to logout of the same account twice does not produce an error. 
+    The second logout attempt will return success, and the user will remain logged out.
+    """
     if username not in accounts:
         # error: account with that username does not exist
         return [False, "ER1: account with that username does not exist"]
@@ -66,16 +162,51 @@ def logout(username):
         accounts[username]["loggedIn"] = False
         # Remove user from a socket at logout
         accounts[username]["socket"] = None
-        accounts[username]["data"] = None
         return [True, ""]
 
 def list_accounts():
+    """
+    Attempts to logout a user in with the given username and password
+
+    Parameters
+    ----------
+    None.
+
+    Returns
+    -------
+    list
+        list[0] is always True. This function cannot fail.
+        list[1] is a list of all account names stored by the server.
+    """
     # Simply return all the accounts, searching for a subset is done on client-side
     accountNames = list(accounts.keys())
     return [True, accountNames]
 
 
 def send_message(from_username, to_username, message, time):
+    """
+    Attempts to send a message from one user to another. If the receiving user is logged in, the message
+    is marked as delivered instantly. Otherwise, it is marked as undelivered.
+
+    Parameters
+    ----------
+    from_username: str
+        The username of the account sending the message
+    to_username: str
+        The username of the account receiving the message
+    message: str
+        The message text
+    time:
+        A string representing the string to be sent
+
+    Returns
+    -------
+    list
+        list[0] is always True. This function cannot fail.
+        list[1] is dictionary containing the the information that is now stored in the server about the 
+        message that was sent. This dictionary has the following keys: sender, timestamp, message, messageId, 
+        and delivered.
+    """
     global messageId
     if to_username not in accounts:
         return [False, "ER1: account with that username does not exist"]
@@ -94,7 +225,28 @@ def send_message(from_username, to_username, message, time):
     return [True, message_dict]
 
 def read_message(username, num):
-    # get messages from the end?
+    """
+    Attempts to send a message from one user to another. If the receiving user is logged in, the message
+    is marked as delivered instantly. Otherwise, it is marked as undelivered.
+
+    Parameters
+    ----------
+    username: str
+        The username of the account requesting to read messages
+    num: int
+        The number of messages requested
+
+    Returns
+    -------
+    list
+        list[0] is always True. This function cannot fail.
+        list[1] is dictionary containing two pieces of data. 
+        list[1]["num_read"] is the number of messages read, which may be less than num if the user 
+        had less than num undelivered messages.
+        list[1]["messages"] is a list of dictionaries containint information about the messages that were read.
+        Each message has the following keys: sender, timestamp, message, messageId, and delivered.
+    """
+    # Go through message array and append undelivered messages
     num_read = 0
     returned_messages = []
     for message in accounts[username]["messageHistory"]:
@@ -108,6 +260,22 @@ def read_message(username, num):
     return [True, {"num_read": num_read, "messages": returned_messages}]
 
 def delete_message(username, id):
+    """
+    Attempts to delete a message with a specific ID from a user's list of messages.
+
+    Parameters
+    ----------
+    username: str
+        The username of the account requesting to delete the message
+    id: int
+        The ID of the message to delete
+
+    Returns
+    -------
+    list
+        list[0] is True or False, and indicates if the user deleted the requested message successfully
+        list[1] is an empty string on success and an error message on failure
+    """
     if username not in accounts:
         return [False, "ER1: attempting to delete a message from an account that does not exist"]
 
@@ -118,12 +286,41 @@ def delete_message(username, id):
     return [False, "ER2: account did not receive message with that id"]
 
 def delete_account(username):
-    del accounts[username]
-    return [True, ""]
+    """
+    Deletes a account with the given username.
+
+    Parameters
+    ----------
+    username: str
+        The username of the account to delete
+
+    Returns
+    -------
+    list
+        list[0] is True or False, and indicates if the user deleted the requested account successfully
+        list[1] is an empty string on success and an error message on failure
+    """
+    if username not in accounts:
+        return [False, "ER1: attempting to delete an account that does not exist"]
+    else:
+        del accounts[username]
+        return [True, ""]
 
 
 # HELPERS FOR DEALING WITH SOCKETS
 def accept_wrapper(sock):
+    """
+    Accepts a new connection from a client.
+
+    Parameters
+    ----------
+    sock: socket
+        The socket of the request comes from.
+
+    Returns
+    -------
+    None.
+    """
     conn, addr = sock.accept()
     print(f"Accepted connection from {addr}")
     conn.setblocking(False)
@@ -134,6 +331,25 @@ def accept_wrapper(sock):
 
 # WIRE PROTOCOL VERSION
 def service_connection_wp(key, mask):
+    """
+    Services a connection from a client using a custom wire protocol.
+
+    Parameters
+    ----------
+    key: namedtuple
+    mask: selectors.EVENT_READ / selectors.EVENT_WRITE
+
+    Returns
+    -------
+    None.
+
+    Notes
+    -----
+    This version understand the custom wire protocol.
+    Though this function does not return, the server will always send some kind of response to the client.
+    In the case where a send message request is made, and the receiving user is logged in, the server will
+    send an additional message to the receiving user's socket with the new message information.
+    """
     sock = key.fileobj
     data = key.data
     if mask & selectors.EVENT_READ:
@@ -199,7 +415,7 @@ def service_connection_wp(key, mask):
                 case "LI":
                     # login
                     username, password = in_data.split(" ")
-                    call_info = login(username, password, sock, data)
+                    call_info = login(username, password, sock)
                     if call_info[0] == True:
                         return_data = "LIT"
                     else:
@@ -235,7 +451,7 @@ def service_connection_wp(key, mask):
                     if call_info[0] == True:
                         return_data = "SET"
                         if accounts[to_username]["loggedIn"] == True:
-                            to_data = accounts[to_username]["data"]
+                            # to_data = accounts[to_username]["data"]
                             to_sock = accounts[to_username]["socket"]
                             message_dict = call_info[1]
                             sending_data = "SEL" + str(message_dict["messageId"]) + " " + message_dict["sender"] + " " + message_dict["timestamp"] + " " + str(len(message_dict["message"])) + message_dict["message"]
@@ -289,6 +505,25 @@ def service_connection_wp(key, mask):
 
 # JSON Version
 def service_connection_json(key, mask):
+    """
+    Services a connection from a client using json.
+
+    Parameters
+    ----------
+    key: namedtuple
+    mask: selectors.EVENT_READ / selectors.EVENT_WRITE
+
+    Returns
+    -------
+    None.
+
+    Notes
+    -----
+    This version understands json.
+    Though this function does not return, the server will always send some kind of response to the client.
+    In the case where a send message request is made, and the receiving user is logged in, the server will
+    send an additional message to the receiving user's socket with the new message information.
+    """
     sock = key.fileobj
     data = key.data
     if mask & selectors.EVENT_READ:
@@ -361,7 +596,7 @@ def service_connection_json(key, mask):
                     # login
                     username = in_data_json["username"]
                     password = in_data_json["password"]
-                    call_info = login(username, password, sock, data)
+                    call_info = login(username, password, sock)
 
                     if call_info[0] == True:
                         return_data = {"success": True, "errorMsg": ""}
@@ -402,7 +637,7 @@ def service_connection_json(key, mask):
                     if call_info[0] == True:
                         return_data = {"success": True, "errorMsg": ""}
                         if accounts[to_username]["loggedIn"] == True:
-                            to_data = accounts[to_username]["data"]
+                            # to_data = accounts[to_username]["data"]
                             to_sock = accounts[to_username]["socket"]
                             message_dict = call_info[1]
                             # sending_data = "SEL" + str(message_dict["messageId"]) + " " + message_dict["sender"] + " " + message_dict["timestamp"] + " " + str(len(message_dict["message"])) + message_dict["message"]
@@ -458,6 +693,8 @@ def service_connection_json(key, mask):
             sent = sock.sendall(return_data)
 
 if __name__ == "__main__":
+    HOST = os.environ.get("HOST_SERVER")
+    PORT = int(os.environ.get("PORT_SERVER"))
     lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     lsock.bind((HOST, PORT))
     lsock.listen()

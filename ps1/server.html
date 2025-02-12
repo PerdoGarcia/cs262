@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Python: module server</title>
+</head><body>
+
+<table class="heading">
+<tr class="heading-text decor">
+<td class="title">&nbsp;<br><strong class="title">server</strong></td>
+<td class="extra"><a href=".">index</a><br><a href="file:c%3A%5Cusers%5Calice%5Cdocuments%5Ccs262%5Cps1%5Cserver.py">c:\users\alice\documents\cs262\ps1\server.py</a></td></tr></table>
+    <p><span class="code">#&nbsp;Adapted&nbsp;from&nbsp;lecture&nbsp;code</span></p>
+<p>
+<table class="section">
+<tr class="decor pkg-content-decor heading-text">
+<td class="section-title" colspan=3>&nbsp;<br><strong class="bigsection">Modules</strong></td></tr>
+    
+<tr><td class="decor pkg-content-decor"><span class="code">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></td><td>&nbsp;</td>
+<td class="singlecolumn"><table><tr><td class="multicolumn"><a href="json.html">json</a><br>
+<a href="os.html">os</a><br>
+</td><td class="multicolumn"><a href="selectors.html">selectors</a><br>
+<a href="socket.html">socket</a><br>
+</td><td class="multicolumn"><a href="types.html">types</a><br>
+</td><td class="multicolumn"></td></tr></table></td></tr></table><p>
+<table class="section">
+<tr class="decor functions-decor heading-text">
+<td class="section-title" colspan=3>&nbsp;<br><strong class="bigsection">Functions</strong></td></tr>
+    
+<tr><td class="decor functions-decor"><span class="code">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></td><td>&nbsp;</td>
+<td class="singlecolumn"><dl><dt><a name="-accept_wrapper"><strong>accept_wrapper</strong></a>(sock)</dt><dd><span class="code">Accepts&nbsp;a&nbsp;new&nbsp;connection&nbsp;from&nbsp;a&nbsp;client.<br>
+&nbsp;<br>
+Parameters<br>
+----------<br>
+sock:&nbsp;socket<br>
+&nbsp;&nbsp;&nbsp;&nbsp;The&nbsp;socket&nbsp;of&nbsp;the&nbsp;request&nbsp;comes&nbsp;from.<br>
+&nbsp;<br>
+Returns<br>
+-------<br>
+None.</span></dd></dl>
+ <dl><dt><a name="-clear_accounts_structure"><strong>clear_accounts_structure</strong></a>()</dt><dd><span class="code">Clears&nbsp;the&nbsp;accounts&nbsp;data&nbsp;structure&nbsp;used&nbsp;by&nbsp;the&nbsp;server.<br>
+&nbsp;<br>
+Parameters<br>
+----------<br>
+None.<br>
+&nbsp;<br>
+Returns<br>
+-------<br>
+None.<br>
+&nbsp;<br>
+Notes<br>
+-----<br>
+This&nbsp;function&nbsp;is&nbsp;ONLY&nbsp;USED&nbsp;FOR&nbsp;TESTING.</span></dd></dl>
+ <dl><dt><a name="-create_account"><strong>create_account</strong></a>(username, password)</dt><dd><span class="code">Attempts&nbsp;to&nbsp;create&nbsp;an&nbsp;account&nbsp;with&nbsp;the&nbsp;given&nbsp;username&nbsp;and&nbsp;password<br>
+&nbsp;<br>
+Parameters<br>
+----------<br>
+username&nbsp;:&nbsp;str<br>
+&nbsp;&nbsp;&nbsp;&nbsp;The&nbsp;desired&nbsp;username&nbsp;of&nbsp;the&nbsp;account&nbsp;<br>
+password&nbsp;:&nbsp;str<br>
+&nbsp;&nbsp;&nbsp;&nbsp;The&nbsp;desired&nbsp;password&nbsp;of&nbsp;the&nbsp;account<br>
+&nbsp;<br>
+Returns<br>
+-------<br>
+list<br>
+&nbsp;&nbsp;&nbsp;&nbsp;list[0]&nbsp;is&nbsp;True&nbsp;or&nbsp;False,&nbsp;and&nbsp;indicates&nbsp;if&nbsp;the&nbsp;account&nbsp;was&nbsp;created&nbsp;successfully<br>
+&nbsp;&nbsp;&nbsp;&nbsp;list[1]&nbsp;is&nbsp;an&nbsp;empty&nbsp;string&nbsp;on&nbsp;success&nbsp;and&nbsp;an&nbsp;error&nbsp;message&nbsp;on&nbsp;failure</span></dd></dl>
+ <dl><dt><a name="-delete_account"><strong>delete_account</strong></a>(username)</dt><dd><span class="code">Deletes&nbsp;a&nbsp;account&nbsp;with&nbsp;the&nbsp;given&nbsp;username.<br>
+&nbsp;<br>
+Parameters<br>
+----------<br>
+username:&nbsp;str<br>
+&nbsp;&nbsp;&nbsp;&nbsp;The&nbsp;username&nbsp;of&nbsp;the&nbsp;account&nbsp;to&nbsp;delete<br>
+&nbsp;<br>
+Returns<br>
+-------<br>
+list<br>
+&nbsp;&nbsp;&nbsp;&nbsp;list[0]&nbsp;is&nbsp;True&nbsp;or&nbsp;False,&nbsp;and&nbsp;indicates&nbsp;if&nbsp;the&nbsp;user&nbsp;deleted&nbsp;the&nbsp;requested&nbsp;account&nbsp;successfully<br>
+&nbsp;&nbsp;&nbsp;&nbsp;list[1]&nbsp;is&nbsp;an&nbsp;empty&nbsp;string&nbsp;on&nbsp;success&nbsp;and&nbsp;an&nbsp;error&nbsp;message&nbsp;on&nbsp;failure</span></dd></dl>
+ <dl><dt><a name="-delete_message"><strong>delete_message</strong></a>(username, id)</dt><dd><span class="code">Attempts&nbsp;to&nbsp;delete&nbsp;a&nbsp;message&nbsp;with&nbsp;a&nbsp;specific&nbsp;ID&nbsp;from&nbsp;a&nbsp;user's&nbsp;list&nbsp;of&nbsp;messages.<br>
+&nbsp;<br>
+Parameters<br>
+----------<br>
+username:&nbsp;str<br>
+&nbsp;&nbsp;&nbsp;&nbsp;The&nbsp;username&nbsp;of&nbsp;the&nbsp;account&nbsp;requesting&nbsp;to&nbsp;delete&nbsp;the&nbsp;message<br>
+id:&nbsp;int<br>
+&nbsp;&nbsp;&nbsp;&nbsp;The&nbsp;ID&nbsp;of&nbsp;the&nbsp;message&nbsp;to&nbsp;delete<br>
+&nbsp;<br>
+Returns<br>
+-------<br>
+list<br>
+&nbsp;&nbsp;&nbsp;&nbsp;list[0]&nbsp;is&nbsp;True&nbsp;or&nbsp;False,&nbsp;and&nbsp;indicates&nbsp;if&nbsp;the&nbsp;user&nbsp;deleted&nbsp;the&nbsp;requested&nbsp;message&nbsp;successfully<br>
+&nbsp;&nbsp;&nbsp;&nbsp;list[1]&nbsp;is&nbsp;an&nbsp;empty&nbsp;string&nbsp;on&nbsp;success&nbsp;and&nbsp;an&nbsp;error&nbsp;message&nbsp;on&nbsp;failure</span></dd></dl>
+ <dl><dt><a name="-get_accounts_structure"><strong>get_accounts_structure</strong></a>()</dt><dd><span class="code">Returns&nbsp;the&nbsp;accounts&nbsp;dictionary&nbsp;used&nbsp;by&nbsp;the&nbsp;server.<br>
+&nbsp;<br>
+Parameters<br>
+----------<br>
+None.<br>
+&nbsp;<br>
+Returns<br>
+-------<br>
+accounts:&nbsp;dict<br>
+&nbsp;<br>
+Notes<br>
+-----<br>
+This&nbsp;function&nbsp;is&nbsp;ONLY&nbsp;USED&nbsp;FOR&nbsp;TESTING.</span></dd></dl>
+ <dl><dt><a name="-list_accounts"><strong>list_accounts</strong></a>()</dt><dd><span class="code">Attempts&nbsp;to&nbsp;logout&nbsp;a&nbsp;user&nbsp;in&nbsp;with&nbsp;the&nbsp;given&nbsp;username&nbsp;and&nbsp;password<br>
+&nbsp;<br>
+Parameters<br>
+----------<br>
+None.<br>
+&nbsp;<br>
+Returns<br>
+-------<br>
+list<br>
+&nbsp;&nbsp;&nbsp;&nbsp;list[0]&nbsp;is&nbsp;always&nbsp;True.&nbsp;This&nbsp;function&nbsp;cannot&nbsp;fail.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;list[1]&nbsp;is&nbsp;a&nbsp;list&nbsp;of&nbsp;all&nbsp;account&nbsp;names&nbsp;stored&nbsp;by&nbsp;the&nbsp;server.</span></dd></dl>
+ <dl><dt><a name="-login"><strong>login</strong></a>(username, password, sock)</dt><dd><span class="code">Attempts&nbsp;to&nbsp;log&nbsp;a&nbsp;user&nbsp;in&nbsp;with&nbsp;the&nbsp;given&nbsp;username&nbsp;and&nbsp;password<br>
+&nbsp;<br>
+Parameters<br>
+----------<br>
+username&nbsp;:&nbsp;str<br>
+&nbsp;&nbsp;&nbsp;&nbsp;The&nbsp;inputted&nbsp;username&nbsp;of&nbsp;the&nbsp;account<br>
+password&nbsp;:&nbsp;str<br>
+&nbsp;&nbsp;&nbsp;&nbsp;The&nbsp;inputted&nbsp;password&nbsp;of&nbsp;the&nbsp;account<br>
+sock&nbsp;:&nbsp;socket<br>
+&nbsp;&nbsp;&nbsp;&nbsp;The&nbsp;socket&nbsp;the&nbsp;user&nbsp;is&nbsp;sending&nbsp;the&nbsp;request&nbsp;to&nbsp;log&nbsp;in&nbsp;from<br>
+&nbsp;<br>
+Returns<br>
+-------<br>
+list<br>
+&nbsp;&nbsp;&nbsp;&nbsp;list[0]&nbsp;is&nbsp;True&nbsp;or&nbsp;False,&nbsp;and&nbsp;indicates&nbsp;if&nbsp;the&nbsp;user&nbsp;logged&nbsp;in&nbsp;successfully<br>
+&nbsp;&nbsp;&nbsp;&nbsp;list[1]&nbsp;is&nbsp;an&nbsp;empty&nbsp;string&nbsp;on&nbsp;success&nbsp;and&nbsp;an&nbsp;error&nbsp;message&nbsp;on&nbsp;failure<br>
+&nbsp;<br>
+Notes<br>
+-----<br>
+Attempting&nbsp;to&nbsp;login&nbsp;to&nbsp;the&nbsp;same&nbsp;account&nbsp;twice&nbsp;does&nbsp;not&nbsp;produce&nbsp;an&nbsp;error.&nbsp;<br>
+The&nbsp;second&nbsp;login&nbsp;attempt&nbsp;will&nbsp;return&nbsp;success,&nbsp;and&nbsp;the&nbsp;user&nbsp;will&nbsp;remain&nbsp;logged&nbsp;in.</span></dd></dl>
+ <dl><dt><a name="-logout"><strong>logout</strong></a>(username)</dt><dd><span class="code">Attempts&nbsp;to&nbsp;logout&nbsp;a&nbsp;user&nbsp;in&nbsp;with&nbsp;the&nbsp;given&nbsp;username&nbsp;and&nbsp;password<br>
+&nbsp;<br>
+Parameters<br>
+----------<br>
+username&nbsp;:&nbsp;str<br>
+&nbsp;&nbsp;&nbsp;&nbsp;The&nbsp;inputted&nbsp;username&nbsp;of&nbsp;the&nbsp;account&nbsp;to&nbsp;logout&nbsp;of<br>
+&nbsp;<br>
+Returns<br>
+-------<br>
+list<br>
+&nbsp;&nbsp;&nbsp;&nbsp;list[0]&nbsp;is&nbsp;True&nbsp;or&nbsp;False,&nbsp;and&nbsp;indicates&nbsp;if&nbsp;the&nbsp;user&nbsp;logged&nbsp;out&nbsp;successfully<br>
+&nbsp;&nbsp;&nbsp;&nbsp;list[1]&nbsp;is&nbsp;an&nbsp;empty&nbsp;string&nbsp;on&nbsp;success&nbsp;and&nbsp;an&nbsp;error&nbsp;message&nbsp;on&nbsp;failure<br>
+&nbsp;<br>
+Notes<br>
+-----<br>
+Attempting&nbsp;to&nbsp;logout&nbsp;of&nbsp;the&nbsp;same&nbsp;account&nbsp;twice&nbsp;does&nbsp;not&nbsp;produce&nbsp;an&nbsp;error.&nbsp;<br>
+The&nbsp;second&nbsp;logout&nbsp;attempt&nbsp;will&nbsp;return&nbsp;success,&nbsp;and&nbsp;the&nbsp;user&nbsp;will&nbsp;remain&nbsp;logged&nbsp;out.</span></dd></dl>
+ <dl><dt><a name="-read_message"><strong>read_message</strong></a>(username, num)</dt><dd><span class="code">Attempts&nbsp;to&nbsp;send&nbsp;a&nbsp;message&nbsp;from&nbsp;one&nbsp;user&nbsp;to&nbsp;another.&nbsp;If&nbsp;the&nbsp;receiving&nbsp;user&nbsp;is&nbsp;logged&nbsp;in,&nbsp;the&nbsp;message<br>
+is&nbsp;marked&nbsp;as&nbsp;delivered&nbsp;instantly.&nbsp;Otherwise,&nbsp;it&nbsp;is&nbsp;marked&nbsp;as&nbsp;undelivered.<br>
+&nbsp;<br>
+Parameters<br>
+----------<br>
+username:&nbsp;str<br>
+&nbsp;&nbsp;&nbsp;&nbsp;The&nbsp;username&nbsp;of&nbsp;the&nbsp;account&nbsp;requesting&nbsp;to&nbsp;read&nbsp;messages<br>
+num:&nbsp;int<br>
+&nbsp;&nbsp;&nbsp;&nbsp;The&nbsp;number&nbsp;of&nbsp;messages&nbsp;requested<br>
+&nbsp;<br>
+Returns<br>
+-------<br>
+list<br>
+&nbsp;&nbsp;&nbsp;&nbsp;list[0]&nbsp;is&nbsp;always&nbsp;True.&nbsp;This&nbsp;function&nbsp;cannot&nbsp;fail.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;list[1]&nbsp;is&nbsp;dictionary&nbsp;containing&nbsp;two&nbsp;pieces&nbsp;of&nbsp;data.&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;list[1]["num_read"]&nbsp;is&nbsp;the&nbsp;number&nbsp;of&nbsp;messages&nbsp;read,&nbsp;which&nbsp;may&nbsp;be&nbsp;less&nbsp;than&nbsp;num&nbsp;if&nbsp;the&nbsp;user&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;had&nbsp;less&nbsp;than&nbsp;num&nbsp;undelivered&nbsp;messages.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;list[1]["messages"]&nbsp;is&nbsp;a&nbsp;list&nbsp;of&nbsp;dictionaries&nbsp;containint&nbsp;information&nbsp;about&nbsp;the&nbsp;messages&nbsp;that&nbsp;were&nbsp;read.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Each&nbsp;message&nbsp;has&nbsp;the&nbsp;following&nbsp;keys:&nbsp;sender,&nbsp;timestamp,&nbsp;message,&nbsp;messageId,&nbsp;and&nbsp;delivered.</span></dd></dl>
+ <dl><dt><a name="-reset_messageId"><strong>reset_messageId</strong></a>()</dt><dd><span class="code">Sets&nbsp;messageId&nbsp;to&nbsp;0&nbsp;in&nbsp;the&nbsp;server.<br>
+&nbsp;<br>
+Parameters<br>
+----------<br>
+None.<br>
+&nbsp;<br>
+Returns<br>
+-------<br>
+None.<br>
+&nbsp;<br>
+Notes<br>
+-----<br>
+This&nbsp;function&nbsp;is&nbsp;ONLY&nbsp;USED&nbsp;FOR&nbsp;TESTING.</span></dd></dl>
+ <dl><dt><a name="-send_message"><strong>send_message</strong></a>(from_username, to_username, message, time)</dt><dd><span class="code">Attempts&nbsp;to&nbsp;send&nbsp;a&nbsp;message&nbsp;from&nbsp;one&nbsp;user&nbsp;to&nbsp;another.&nbsp;If&nbsp;the&nbsp;receiving&nbsp;user&nbsp;is&nbsp;logged&nbsp;in,&nbsp;the&nbsp;message<br>
+is&nbsp;marked&nbsp;as&nbsp;delivered&nbsp;instantly.&nbsp;Otherwise,&nbsp;it&nbsp;is&nbsp;marked&nbsp;as&nbsp;undelivered.<br>
+&nbsp;<br>
+Parameters<br>
+----------<br>
+from_username:&nbsp;str<br>
+&nbsp;&nbsp;&nbsp;&nbsp;The&nbsp;username&nbsp;of&nbsp;the&nbsp;account&nbsp;sending&nbsp;the&nbsp;message<br>
+to_username:&nbsp;str<br>
+&nbsp;&nbsp;&nbsp;&nbsp;The&nbsp;username&nbsp;of&nbsp;the&nbsp;account&nbsp;receiving&nbsp;the&nbsp;message<br>
+message:&nbsp;str<br>
+&nbsp;&nbsp;&nbsp;&nbsp;The&nbsp;message&nbsp;text<br>
+time:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;A&nbsp;string&nbsp;representing&nbsp;the&nbsp;string&nbsp;to&nbsp;be&nbsp;sent<br>
+&nbsp;<br>
+Returns<br>
+-------<br>
+list<br>
+&nbsp;&nbsp;&nbsp;&nbsp;list[0]&nbsp;is&nbsp;always&nbsp;True.&nbsp;This&nbsp;function&nbsp;cannot&nbsp;fail.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;list[1]&nbsp;is&nbsp;dictionary&nbsp;containing&nbsp;the&nbsp;the&nbsp;information&nbsp;that&nbsp;is&nbsp;now&nbsp;stored&nbsp;in&nbsp;the&nbsp;server&nbsp;about&nbsp;the&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;message&nbsp;that&nbsp;was&nbsp;sent.&nbsp;This&nbsp;dictionary&nbsp;has&nbsp;the&nbsp;following&nbsp;keys:&nbsp;sender,&nbsp;timestamp,&nbsp;message,&nbsp;messageId,&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;and&nbsp;delivered.</span></dd></dl>
+ <dl><dt><a name="-service_connection_json"><strong>service_connection_json</strong></a>(key, mask)</dt><dd><span class="code">Services&nbsp;a&nbsp;connection&nbsp;from&nbsp;a&nbsp;client&nbsp;using&nbsp;json.<br>
+&nbsp;<br>
+Parameters<br>
+----------<br>
+key:&nbsp;namedtuple<br>
+mask:&nbsp;selectors.EVENT_READ&nbsp;/&nbsp;selectors.EVENT_WRITE<br>
+&nbsp;<br>
+Returns<br>
+-------<br>
+None.<br>
+&nbsp;<br>
+Notes<br>
+-----<br>
+This&nbsp;version&nbsp;understands&nbsp;json.<br>
+Though&nbsp;this&nbsp;function&nbsp;does&nbsp;not&nbsp;return,&nbsp;the&nbsp;server&nbsp;will&nbsp;always&nbsp;send&nbsp;some&nbsp;kind&nbsp;of&nbsp;response&nbsp;to&nbsp;the&nbsp;client.<br>
+In&nbsp;the&nbsp;case&nbsp;where&nbsp;a&nbsp;send&nbsp;message&nbsp;request&nbsp;is&nbsp;made,&nbsp;and&nbsp;the&nbsp;receiving&nbsp;user&nbsp;is&nbsp;logged&nbsp;in,&nbsp;the&nbsp;server&nbsp;will<br>
+send&nbsp;an&nbsp;additional&nbsp;message&nbsp;to&nbsp;the&nbsp;receiving&nbsp;user's&nbsp;socket&nbsp;with&nbsp;the&nbsp;new&nbsp;message&nbsp;information.</span></dd></dl>
+ <dl><dt><a name="-service_connection_wp"><strong>service_connection_wp</strong></a>(key, mask)</dt><dd><span class="code">Services&nbsp;a&nbsp;connection&nbsp;from&nbsp;a&nbsp;client&nbsp;using&nbsp;a&nbsp;custom&nbsp;wire&nbsp;protocol.<br>
+&nbsp;<br>
+Parameters<br>
+----------<br>
+key:&nbsp;namedtuple<br>
+mask:&nbsp;selectors.EVENT_READ&nbsp;/&nbsp;selectors.EVENT_WRITE<br>
+&nbsp;<br>
+Returns<br>
+-------<br>
+None.<br>
+&nbsp;<br>
+Notes<br>
+-----<br>
+This&nbsp;version&nbsp;understand&nbsp;the&nbsp;custom&nbsp;wire&nbsp;protocol.<br>
+Though&nbsp;this&nbsp;function&nbsp;does&nbsp;not&nbsp;return,&nbsp;the&nbsp;server&nbsp;will&nbsp;always&nbsp;send&nbsp;some&nbsp;kind&nbsp;of&nbsp;response&nbsp;to&nbsp;the&nbsp;client.<br>
+In&nbsp;the&nbsp;case&nbsp;where&nbsp;a&nbsp;send&nbsp;message&nbsp;request&nbsp;is&nbsp;made,&nbsp;and&nbsp;the&nbsp;receiving&nbsp;user&nbsp;is&nbsp;logged&nbsp;in,&nbsp;the&nbsp;server&nbsp;will<br>
+send&nbsp;an&nbsp;additional&nbsp;message&nbsp;to&nbsp;the&nbsp;receiving&nbsp;user's&nbsp;socket&nbsp;with&nbsp;the&nbsp;new&nbsp;message&nbsp;information.</span></dd></dl>
+</td></tr></table><p>
+<table class="section">
+<tr class="decor data-decor heading-text">
+<td class="section-title" colspan=3>&nbsp;<br><strong class="bigsection">Data</strong></td></tr>
+    
+<tr><td class="decor data-decor"><span class="code">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></td><td>&nbsp;</td>
+<td class="singlecolumn"><strong>accounts</strong> = {}<br>
+<strong>messageId</strong> = 0<br>
+<strong>sel</strong> = &lt;selectors.SelectSelector object&gt;</td></tr></table>
+</body></html>
