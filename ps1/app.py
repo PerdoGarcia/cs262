@@ -216,10 +216,11 @@ class CentralState:
             print("Not connected to server")
             return False
         try:
-            json_str = json.dumps(message_dict)
-            full_message = f"{len(json_str)}{json_str}"
-            self.socket.sendall(full_message.encode('utf-8'))
-            print(f"Sent JSON: {json_str}")
+            json_message = json.dumps(message_dict)
+            retun_data = str(len(json_message)) + json_message
+            print("RETURN MESSAGE", retun_data)
+            self.socket.sendall(retun_data.encode('utf-8'))
+            print(f"Sent JSON: {json_message}")
             return True
         except Exception as e:
             print("Failed to write to server:", e)
@@ -274,6 +275,8 @@ class CentralState:
         request_type = json_data.get("type", "")
         print("Request type:", request_type)
         match request_type:
+            case "SET":
+                print("Sending message success")
             case "SEL":  # Received message
                 self.messages.append({
                     "messageId": json_data["messageId"],
@@ -284,7 +287,6 @@ class CentralState:
 
             case "LIT":  # Login success
                 self.is_logged_in = True
-
                 print("Login successful")
 
             case "LOT":  # Logout success
@@ -296,6 +298,8 @@ class CentralState:
 
             case "RET":  # Read messages
                 messages = json_data.get("messages", [])
+                print("Received messages:", messages)
+                print("json on ret", json_data)
                 new_messages = []
                 for msg in messages:
                     new_messages.append({
@@ -880,7 +884,10 @@ class SearchAccount(tk.Frame):
         self.controller.show_frame(Navigation)
 
     def update_accounts(self):
-        self.state.write_to_server("LA")
+        if self.state.is_json:
+            self.state.write_to_server_json({"type": "LA"})
+        else:
+            self.state.write_to_server("LA")
         self.display_accounts()
         self.after_id = self.after(500, self.update_accounts)
 
