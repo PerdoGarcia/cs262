@@ -3,13 +3,17 @@
 import socket
 import selectors
 import types
+import os
+from dotenv import load_dotenv
 # Helpers for processing each file, separated for conciseness
 # from server_helpers import *
 sel = selectors.DefaultSelector()
 
+load_dotenv()
+
 # TODO: CHANGE THIS DO NOT HARD CODE
-HOST = "127.0.0.1"
-PORT = 54400
+HOST = os.environ.get("HOST_SERVER")
+PORT = int(os.environ.get("PORT_SERVER"))
 
 # TODO: flesh out this data structure if needed
 accounts = {}
@@ -32,7 +36,7 @@ def login(username, password, sock, data):
         # error: account with that username does not exist
         return [False, "ER1: account with that username does not exist"]
     else:
-        if accounts["accountInfo"]["username"] == username and accounts["accountInfo"]["password"] == password:
+        if accounts[username]["accountInfo"]["username"] == username and accounts[username]["accountInfo"]["password"] == password:
             # if you try to login twice for some reason nothing happens
             accounts[username]["loggedIn"] = True
             # Bind user to a certain socket on login
@@ -62,6 +66,7 @@ def list_accounts():
 
 
 def send_message(from_username, to_username, message, time):
+    global messageId
     if to_username not in accounts:
         return [False, "ER1: account with that username does not exist"]
 
@@ -122,21 +127,45 @@ def service_connection_wp(key, mask):
     sock = key.fileobj
     data = key.data
     if mask & selectors.EVENT_READ:
-        recv_data = sock.recv(1024)
-        if recv_data:
-            print("RECEIVED RAW DATA:", recv_data)
-            data.outb += recv_data
-        else:
+        # TODO: Recieve the first numeric bytes + turn into a number
+        str_bytes = ""
+        recv_data = sock.recv(1)
+        while recv_data:
+            if len(recv_data.decode("utf-8")) > 0:
+                if (recv_data.decode("utf-8")).isnumeric():
+                    str_bytes += recv_data.decode("utf-8")
+                else:
+                    break
+            recv_data = sock.recv(1)
+        if not recv_data:
             print(f"Closing connection to {data.addr}")
             sel.unregister(sock)
             sock.close()
+
+        num_bytes = int(str_bytes)
+
+        # TODO: read more bytes using recv until you've fit all the bytes in
+        data.outb += recv_data
+        cur_bytes = 1
+        while(cur_bytes < num_bytes):
+            recv_data = sock.recv(num_bytes - cur_bytes)
+            if recv_data:
+                print("RECEIVED RAW DATA:", recv_data)
+                data.outb += recv_data
+                cur_bytes += len(recv_data.decode("utf-8"))
+            else:
+                print(f"Closing connection to {data.addr}")
+                sel.unregister(sock)
+                sock.close()
+
     if mask & selectors.EVENT_WRITE:
         if not data.outb:
             return
         if data.outb:
             # TODO: change this line to process as we need to
             in_data = data.outb.decode("utf-8")
-            print("PROCESSING MESSAGE:", in_data)
+            # Flush out the input data from the buffer so that things remain synced
+            data.outb = data.outb[len(in_data):]
             # Get 2 letter request type code
             request_type = in_data[:2]
             # The rest of the sent over data is the data needed to complete the request
@@ -155,7 +184,7 @@ def service_connection_wp(key, mask):
                         return_data = "CRT"
                     else:
                         # Pull just the error code out when we are using custom wire protocol
-                        return_data = call_info[:3]
+                        return_data = call_info[1][:3]
 
                 case "LI":
                     # login
@@ -165,7 +194,7 @@ def service_connection_wp(key, mask):
                         return_data = "LIT"
                     else:
                         # Pull just the error code out when we are using custom wire protocol
-                        return_data = call_info[:3]
+                        return_data = call_info[1][:3]
 
                 case "LO":
                     # logout
@@ -175,7 +204,7 @@ def service_connection_wp(key, mask):
                         return_data = "LOT"
                     else:
                         # Pull just the error code out when we are using custom wire protocol
-                        return_data = call_info[:3]
+                        return_data = call_info[1][:3]
 
                 case "LA":
                     # list accounts
@@ -184,7 +213,12 @@ def service_connection_wp(key, mask):
 
                 case "SE":
                     print("SENDING MESSAGE", in_data)
-                    from_username, to_username, time, message = in_data.split(" ")
+                    in_data_array = in_data.split(" ")
+                    from_username = in_data_array[0]
+                    to_username = in_data_array[1]
+                    time = in_data_array[2]
+                    message = " ".join(in_data_array[3:])
+                    # from_username, to_username, time, message = in_data.split(" ")
                     call_info = send_message(from_username, to_username, message, time)
                     # send message
                     # TODO: should we send a notif to the receiver's socket if they are logged on?
@@ -194,15 +228,16 @@ def service_connection_wp(key, mask):
                             to_data = accounts[to_username]["data"]
                             to_sock = accounts[to_username]["socket"]
                             message_dict = call_info[1]
-                            sending_data = str(message_dict["messageId"]) + " " + message_dict["sender"] + " " + message_dict["timestamp"] + " " + str(len(message_dict["message"])) + message_dict["message"]
+                            sending_data = "SEL" + str(message_dict["messageId"]) + " " + message_dict["sender"] + " " + message_dict["timestamp"] + " " + str(len(message_dict["message"])) + message_dict["message"]
+                            sending_data = str(len(sending_data)) + sending_data
                             # Send data to the logged in user's socket
                             sending_data = sending_data.encode("utf-8")
-                            sent = to_sock.send(sending_data)
-                            to_data.outb = to_data.outb[sent:]
+                            sent = to_sock.sendall(sending_data)
+                            # to_data.outb = to_data.outb[total_len_sending+1:]
 
                     else:
                         # Pull just the error code out when we are using custom wire protocol
-                        return_data = call_info[:3]
+                        return_data = call_info[1][:3]
 
                 case "RE":
                     username, num = in_data.split(" ")
@@ -213,7 +248,7 @@ def service_connection_wp(key, mask):
                             return_data += " " + str(message["messageId"]) + " " + message["sender"]  + " " + message["timestamp"] + " " + str(len(message["message"])) + message["message"]
                     else:
                         # Pull just the error code out when we are using custom wire protocol
-                        return_data = call_info[:3]
+                        return_data = call_info[1][:3]
 
                 case "DM":
                     # delete message
@@ -223,16 +258,19 @@ def service_connection_wp(key, mask):
                         return_data = "SET"
                     else:
                         # Pull just the error code out when we are using custom wire protocol
-                        return_data = call_info[:3]
+                        return_data = call_info[1][:3]
 
                 case "DA":
                     username = in_data
                     return "DAT"
 
             # return_data = trans_to_pig_latin(data.outb.decode("utf-8"))
+            print(str(len(return_data)))
+            print(return_data)
+            return_data = str(len(return_data)) + return_data
+            print("returning: ", return_data)
             return_data = return_data.encode("utf-8")
-            sent = sock.send(return_data)
-            data.outb = data.outb[sent:]
+            sent = sock.sendall(return_data)
 
 if __name__ == "__main__":
     lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
