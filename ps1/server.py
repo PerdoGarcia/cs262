@@ -324,7 +324,7 @@ def service_connection_json(key, mask):
                     print(f"Closing connection to {data.addr}")
                     sel.unregister(sock)
                     sock.close()
-                    
+
 
     if mask & selectors.EVENT_WRITE:
         if not data.outb:
