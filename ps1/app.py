@@ -7,6 +7,7 @@ import socket
 import time
 import os
 from dotenv import load_dotenv
+import json
 
 load_dotenv()
 
@@ -18,6 +19,7 @@ class CentralState:
         self.socket = None
         self.is_logged_in = False
         self.is_connected = False
+        self.number_of_messages = 5
         self.host = os.environ.get("HOST_SERVER")
         self.port = int(os.environ.get("PORT_SERVER"))
 
@@ -25,7 +27,6 @@ class CentralState:
     def reset_state(self):
         self.current_user = None
         self.messages = []
-
 
     def connect_to_server(self):
         try:
@@ -39,6 +40,7 @@ class CentralState:
             print(e)
             self.is_connected = False
             return False
+
 
     def read_from_server(self):
         while self.is_connected:
@@ -89,7 +91,6 @@ class CentralState:
 
         match request_type:
             case "CRT":
-                self.current_user = data
                 pass
 
             case "SEL":
@@ -100,25 +101,22 @@ class CentralState:
                 timestamp = parts[2]
                 message_content = " ".join(parts[4:])
                 self.messages.append({
-                        "Message ID": message_id,
-                        "Sender": sender,
-                        "Timestamp": timestamp,
-                        "Message": message_content
+                        "messageId": message_id,
+                        "sender": sender,
+                        "timestamp": timestamp,
+                        "message": message_content
                     })
 
             case "LIT":
-                self.logged_in = True
-                self.current_user = data
+                self.is_logged_in = True
+
                 pass
             case "LOT":
-                self.logged_in = False
+                self.is_logged_in = False
                 self.reset_state()
-                pass
             case "LAT":
-                print("Active Accounts:", data)
                 self.accounts = data.split(" ")
             case "RET":
-                print("Retrieved messages:", data)
                 parts = data.split(" ")
                 num_read = int(parts[0])
 
@@ -138,21 +136,21 @@ class CentralState:
                     index += 4 + message_length
 
                     new_messages.append({
-                        "Message ID": message_id,
-                        "Sender": sender,
-                        "Timestamp": timestamp,
-                        "Message": message_content
+                        "messageId": message_id,
+                        "sender": sender,
+                        "timestamp": timestamp,
+                        "message": message_content
                     })
 
                 if new_messages:
                     self.messages = new_messages
 
-                print(f"Retrieved {num_read} messages:")
-                for msg in self.messages:
-                    print(f"ID: {msg['Message ID']}, From: {msg['Sender']}, Time: {msg['Timestamp']}")
-                    print(f"Message: {msg['Message']}\n")
             case "SET":
                 pass
+            case "DMT":
+                # Delete message
+                self.messages = []
+                self.write_to_server("RE" + self.current_user + " " + str(self.number_of_messages))
             case "ER0":
                 pass
             case "ER1":
@@ -163,6 +161,8 @@ class CentralState:
                 self.logged_in = False
                 self.reset_state()
                 print("ER2: incorrect password", data)
+            case "ER3":
+                print("failed to delete message", data)
             case "DAT":
                 self.logged_in = False
                 self.reset_state()
@@ -187,6 +187,117 @@ class CentralState:
             print("Failed to write to the server.")
             print(e)
             return False
+
+
+     #JSON
+    def write_to_server_json(self, message_dict):
+        print("Writing JSON to server:", message_dict)
+        if not self.is_connected:
+            print("Not connected to server")
+            return False
+        try:
+            json_str = json.dumps(message_dict)
+            full_message = f"{len(json_str)}{json_str}"
+            self.socket.sendall(full_message.encode('utf-8'))
+            print(f"Sent JSON: {json_str}")
+            return True
+        except Exception as e:
+            print("Failed to write to server:", e)
+            return False
+
+
+    def read_from_server_json(self):
+        while self.is_connected:
+            try:
+                # Still need to read length prefix byte by byte
+                str_bytes = ""
+                recv_data = self.socket.recv(1)
+                while recv_data:
+                    if len(recv_data.decode("utf-8")) > 0:
+                        if (recv_data.decode("utf-8")).isnumeric():
+                            str_bytes += recv_data.decode("utf-8")
+                        else:
+                            break
+                    recv_data = self.socket.recv(1)
+
+                num_bytes = int(str_bytes)
+                cur_bytes = 1
+                ret_data = recv_data
+
+                # Still need to read exact number of bytes
+                while (cur_bytes < num_bytes):
+                    data = self.socket.recv(num_bytes - cur_bytes)
+                    if not data:
+                        self.is_connected = False
+                        break
+                    ret_data += data
+                    cur_bytes += len(data.decode("utf-8"))
+
+                # Only difference is here - parse as JSON
+                message = ret_data.decode('utf-8')
+                json_data = json.loads(message)
+                self.handle_reads_json(json_data)
+
+            except Exception as e:
+                print("Error reading from server:", e)
+                self.is_connected = False
+                break
+
+
+    def handle_reads_json(self, json_data):
+        print("Handling JSON:", json_data)
+
+        # Check for error first
+        if not json_data.get("success", False):
+            print("Server Error:", json_data.get("errorMsg"))
+            return
+
+        request_type = json_data.get("type", "")
+        match request_type:
+            case "SEL":  # Received message
+                self.messages.append({
+                    "messageId": json_data["messageId"],
+                    "sender": json_data["sender"],
+                    "timestamp": json_data["timestamp"],
+                    "message": json_data["message"]
+                })
+
+            case "LIT":  # Login success
+                self.is_logged_in = True
+
+                print("Login successful")
+
+            case "LOT":  # Logout success
+                self.is_logged_in = False
+                self.reset_state()
+
+            case "LAT":  # List accounts
+                self.accounts = json_data.get("accounts", [])
+
+            case "RET":  # Read messages
+                messages = json_data.get("messages", [])
+                new_messages = []
+                for msg in messages:
+                    new_messages.append({
+                        "messageId": msg["messageId"],
+                        "sender": msg["sender"],
+                        "timestamp": msg["timestamp"],
+                        "message": msg["message"]
+                    })
+                if new_messages:
+                    self.messages = new_messages
+
+            case "DMT":  # Delete message success
+                self.messages = []
+                self.write_to_server_json({
+                    "type": "RE",
+                    "username": self.current_user,
+                    "number": self.number_of_messages
+                })
+
+            case _:
+                print("Unknown message type:", request_type)
+
 
 
 class App(tk.Tk):
@@ -218,8 +329,11 @@ class App(tk.Tk):
 
         if page == SearchAccount or page == Chat or page == Onboarding:
             frame.update_accounts()
-        # elif page == MessageDisplay:
-        #     frame.update_messages()
+        elif page == MessageDisplay:
+            frame.update_messages()
+
+        if page == MessageDisplay:
+            frame.refresh_page()
 
     def get_state(self):
         return self.state
@@ -258,7 +372,7 @@ class Onboarding(tk.Frame):
 
     def update_accounts(self):
         self.state.write_to_server("LA")
-        self.after_id = self.after(100000, self.update_accounts)
+        self.after_id = self.after(500, self.update_accounts)
 
     def leave_to_navigation(self):
         print("Leaving Onboarding...")
@@ -275,6 +389,9 @@ class Onboarding(tk.Frame):
     def handle_login(self):
         username = self.textbox_username.get()
         password = self.textbox_password.get()
+        print("==== HANDLE LOGIN ====")
+        print("Before - state.is_logged_in:", self.state.is_logged_in)
+        print("Before - state.current_user:", self.state.current_user)
         if not username or not password:
             messagebox.showerror("Error", "Please fill in both username and password.")
             return
@@ -287,7 +404,7 @@ class Onboarding(tk.Frame):
             return_value = "LI" + username + " " + hashed_password
             if self.state.write_to_server(return_value):
                 self.state.current_user = username
-                self.after(100, self.check_login_success)
+                self.after(500, self.check_login_success)
             else:
                 messagebox.showerror("Error", "Login failed. Please try again.")
         else:
@@ -309,13 +426,21 @@ class Onboarding(tk.Frame):
         hashed_password = self.enhash(password)
         return_value = "CR" + username + " " + hashed_password
         if self.state.write_to_server(return_value):
-            #sleep for 10 seconsd
-            login_value = "LI" + username + " " + hashed_password
+            # Store these for after we get CRT response
+            self.pending_username = username
+            self.pending_password = hashed_password
+            self.after(500, self.complete_account_creation)
+
+    def complete_account_creation(self):
+        # Only proceed with login if we got CRT confirmation
+        if self.pending_username and self.pending_password:
+            login_value = "LI" + self.pending_username + " " + self.pending_password
+            self.state.current_user = self.pending_username
             if self.state.write_to_server(login_value):
-                self.after(300, self.check_login_success)
+                self.after(500, self.check_login_success)
 
     def check_login_success(self):
-        if self.state.current_user is None and self.state.is_logged_in is False:
+        if self.state.is_logged_in is False:
             messagebox.showerror("Error", "Login failed. Please try again.")
         else:
             self.state.current_user = self.textbox_username.get()
@@ -396,6 +521,7 @@ class Chat(tk.Frame):
         self.controller = controller
         self.state = state
 
+
         self.grid_columnconfigure(1, weight=1)
 
         self.back_button = tk.Button(
@@ -463,6 +589,7 @@ class MessageDisplay(tk.Frame):
         self.controller = controller
         self.state = state
         self.number_of_messages = 10
+        self.after_id = None
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
@@ -480,6 +607,17 @@ class MessageDisplay(tk.Frame):
             command=self.delete_message
         )
         self.delete_button.grid(row=0, column=3, sticky="w", padx=10, pady=10)
+        # to count the number of messages
+        self.message_count_entry = ttk.Entry(self, width=5)
+        self.message_count_entry.grid(row=0, column=4, sticky="e", padx=10, pady=10)
+
+
+        self.set_message_count_button = ttk.Button(
+            self,
+            text="Enter",
+            command=self.set_message_count,
+        )
+        self.set_message_count_button.grid(row=0, column=5, sticky="e", padx=10, pady=10)
 
         self.paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
         self.paned.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
@@ -495,48 +633,92 @@ class MessageDisplay(tk.Frame):
 
         self.messages = self.state.messages.copy()
         for msg in self.messages:
-            formatted_msg = f"From: {msg['Sender']}: {msg['Message']} \n\n At: {msg['Timestamp']}"
+            formatted_msg = f"From: {msg['sender']}: {msg['message']} \n\n At: {msg['timestamp']}"
             self.message_list.insert(tk.END, formatted_msg)
 
         self.update_messages()
 
     def back_to_navigation(self):
-        self.after_cancel(self.after(500, self.update_messages))
+        if hasattr(self, "after_id") and self.after_id is not None:
+            self.after_cancel(self.after_id)
+            self.after_id = None
+            self.message_content.delete(1.0, tk.END)
+
         self.controller.show_frame(Navigation)
 
+
+
+    def set_message_count(self):
+        try:
+            new_count = self.message_count_entry.get()
+            print("Entered count:", new_count)
+
+            if new_count and new_count.isdigit():
+                print("Old message count:", self.number_of_messages)
+                self.number_of_messages = int(new_count)
+                print("New message count:", self.number_of_messages)
+
+                # Clear current display
+                self.message_list.delete(0, tk.END)
+                self.messages = []
+
+                self.state.write_to_server("RE" + self.state.current_user + " " + str(self.number_of_messages))
+                print("Sent request for", self.number_of_messages, "messages")
+
+            else:
+                print("Invalid input:", new_count)
+        except ValueError as e:
+            print("Error:", e)
+            messagebox.showerror("Error", "Please enter a valid number")
+
+
+    def refresh_page(self):
+        self.message_list.delete(0, tk.END)
+        self.messages = self.state.messages.copy()  # Ensure it's in sync
+
+        for msg in self.messages:
+            formatted_msg = f"From: {msg['sender']}: {msg['message']} \n\n At: {msg['timestamp']}"
+            self.message_list.insert(tk.END, formatted_msg)
+
+        self.update_messages()
+
     def update_messages(self):
+        print("displaying self.state.messages", self.state.messages)
+        print("displaying self.messages", self.messages)
+        if not self.state.current_user or not self.state.is_logged_in:
+        # We're logged out, stop updating messages
+            return
         self.state.write_to_server("RE" + self.state.current_user + " " + str(self.number_of_messages))
 
-        # Only update display if messages have actually changed
+        # Only update display if messages have actually chaanged
         if self.state.messages != self.messages:
-            # Store current selection/scroll position if needed
             current_selection = self.message_list.curselection()
             current_scroll = self.message_list.yview()
 
-            # Update our message copy
-            self.messages = self.state.messages.copy()  # Make a copy to prevent reference issues
+            # (prevent reference copy so i can update messages)
+            self.messages = self.state.messages.copy()
 
-            # Rebuild display
+            #Rebuild display
             self.message_list.delete(0, tk.END)
-            for msg in self.messages:
-                formatted_msg = f"From: {msg['Sender']}: {msg['Message']} \n\n At: {msg['Timestamp']}"
+            for msg in self.state.messages[:self.number_of_messages]:
+                formatted_msg = f"From: {msg['send']}: {msg['message']} \n\n At: {msg['timestamp']}"
                 self.message_list.insert(tk.END, formatted_msg)
 
             # Restore selection/scroll position if needed
             if current_selection:
                 self.message_list.selection_set(current_selection)
             self.message_list.yview_moveto(current_scroll[0])
-
-        self.after(1000, self.update_messages)
-
+        self.after_id = self.after(500, self.update_messages)
 
     def display_message(self, event):
+        print("displaying self.state.messages", self.state.messages)
+        print("displaying self.messages", self.messages)
         if not self.message_list.curselection():
             return
 
         selection = self.message_list.curselection()[0]
         message_dict = self.messages[selection]
-        formatted_message = f"From: {message_dict['Sender']}: {message_dict['Message']} \n\n At: {message_dict['Timestamp']}"
+        formatted_message = f"From: {message_dict['sender']}: {message_dict['message']} \n\n At: {message_dict['timestamp']}"
 
         self.message_content.config(state='normal')
         self.message_content.delete(1.0, tk.END)
@@ -546,11 +728,14 @@ class MessageDisplay(tk.Frame):
     def delete_message(self):
         if self.message_list.curselection():
             selection = self.message_list.curselection()[0]
-            self.message_list.delete(selection)
-            self.message_content.config(state='normal')
-            self.message_content.delete(1.0, tk.END)
-            self.message_content.config(state='disabled')
-        pass
+            message_to_delete = self.messages[selection]
+            message_id = message_to_delete["messageId"]
+
+            delete_command = "DM" + self.state.current_user + " " + message_id
+            print(f"Sending delete command: {delete_command}")
+
+            if self.state.write_to_server(delete_command):
+                print("Message deleted successfully")
 
 
 class SearchAccount(tk.Frame):
@@ -595,17 +780,21 @@ class SearchAccount(tk.Frame):
         self.after_id = self.after(500, self.update_accounts)
 
     def display_accounts(self, filter_text=None):
-        if not self.is_first_display and self.state.accounts == self.accounts:
+        # Always display if we have a filter_text, regardless of whether accounts changed
+        if not filter_text and not self.is_first_display and self.state.accounts == self.accounts:
             return
+
         self.is_first_display = False
-        self.accounts = self.state.accounts
+        # Make a copy to ensure proper comparison rather than a reference
+        self.accounts = self.state.accounts.copy()
         self.results_text.config(state='normal')
         self.results_text.delete(1.0, tk.END)
 
-        displayed_accounts = self.state.accounts
+        displayed_accounts = self.accounts
 
         if filter_text:
             displayed_accounts = [user for user in displayed_accounts if filter_text.lower() in user.lower()]
+            print("Filtered accounts:", displayed_accounts)
 
         for username in displayed_accounts:
             self.results_text.insert(tk.END, f"Username: {username}\n")
@@ -614,6 +803,7 @@ class SearchAccount(tk.Frame):
 
     def search_account(self):
         search_term = self.username_textbox.get()
+        print("Searching for:", search_term)
         self.display_accounts(search_term)
 
 
