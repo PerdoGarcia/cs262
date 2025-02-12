@@ -4,6 +4,11 @@ import tkinter as tk
 from tkinter import messagebox
 from tkinter import ttk
 import socket
+import time
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class CentralState:
     def __init__(self):
@@ -12,8 +17,8 @@ class CentralState:
         self.accounts = []
         self.socket = None
         self.is_connected = False
-        self.host = "127.0.0.1"
-        self.port = 54400
+        self.host = os.environ.get("HOST_SERVER")
+        self.port = int(os.environ.get("PORT_SERVER"))
 
 
     def reset_state(self):
@@ -37,29 +42,69 @@ class CentralState:
     def read_from_server(self):
         while self.is_connected:
             try:
-                data = self.socket.recv(1024)
-                if not data:
-                    print("Server connection closed")
-                    self.is_connected = False
-                    break
+                str_bytes = ""
+                recv_data = self.socket.recv(1)
+                print("Received data:", recv_data)
+                while recv_data:
+                    if len(recv_data.decode("utf-8")) > 0:
+                        if (recv_data.decode("utf-8")).isnumeric():
+                            str_bytes += recv_data.decode("utf-8")
+                        else:
+                            break
+                    recv_data = self.socket.recv(1)
 
-                message = data.decode('utf-8')
-                print(f"Received: {message}")
-                self.handle_reads(message)
+                num_bytes = int(str_bytes)
+                cur_bytes = 1
+                ret_data = recv_data
+
+                if not str_bytes:
+                    print("No length prefix received")
+                    continue
+
+                while (cur_bytes < num_bytes):
+                    data = self.socket.recv(num_bytes - cur_bytes)
+
+                    # data = self.socket.recv(1024)
+                    if not data:
+                        print("Server connection closed")
+                        self.is_connected = False
+                        break
+                    ret_data += data
+                    cur_bytes += len(data.decode("utf-8"))
+
+                message = ret_data.decode('utf-8')
+                print(f"Received: {message[:num_bytes]}")
+                self.handle_reads(message[:num_bytes])
+
             except Exception as e:
                 print("Error reading from server:", e)
                 self.is_connected = False
                 break
 
     def handle_reads(self, server_message):
+        print("Handling reads", server_message)
         request_type = server_message[:3]
         data = server_message[3:]
 
         match request_type:
             case "CRT":
                 self.current_user = data
-
                 pass
+
+            case "SEL":
+                print("message recieved while logged in")
+                parts = data.split(" ")
+                message_id = parts[1]
+                sender = parts[2]
+                timestamp = parts[3]
+                message_content = " ".join(parts[4:])
+                self.messages.append({
+                        "Message ID": message_id,
+                        "Sender": sender,
+                        "Timestamp": timestamp,
+                        "Message": message_content
+                    })
+
             case "LIT":
                 self.current_user = data
                 pass
@@ -67,9 +112,10 @@ class CentralState:
                 self.reset_state()
                 pass
             case "LAT":
+                print("Active Accounts:", data)
                 self.accounts = data.split(" ")
-                print("Active Accounts:", ", ".join(self.accounts))
             case "RET":
+                print("Retrieved messages:", data)
                 parts = data.split(" ")
                 num_read = int(parts[0])
                 self.messages = []
@@ -98,6 +144,8 @@ class CentralState:
                 pass
             case "ER0":
                 pass
+            case "ER1":
+                print("some error", data)
             case "DAT":
                 pass
             case _:
@@ -107,12 +155,13 @@ class CentralState:
     # perhaps create a thread on the client for reading
     # and create a thread on the client for writing
     def write_to_server(self, message):
+        print("Writing to server", message)
         if not self.is_connected:
             print("Not connected to server")
             return False
-
         try:
-            self.socket.sendall(message.encode('utf-8'))
+            return_data = str(len(message)) + message
+            self.socket.sendall(return_data.encode('utf-8'))
             print(f"Sent: {message}")
             return True
         except Exception as e:
@@ -169,10 +218,10 @@ class Onboarding(tk.Frame):
 
         self.label = tk.Label(self, text="Sign in")
 
-        self.label_username = tk.Label(self, text='First Name')
+        self.label_username = tk.Label(self, text='Username')
         self.label_username.grid(row=0)
 
-        self.label_password = tk.Label(self, text='Last Name')
+        self.label_password = tk.Label(self, text='Password')
         self.label_password.grid(row=1)
 
         self.textbox_username = tk.Entry(self)
@@ -181,16 +230,16 @@ class Onboarding(tk.Frame):
         self.textbox_password = tk.Entry(self)
         self.textbox_password.grid(row=1, column=1)
 
-        self.button = tk.Button(self, text="Login", command=self.handle_login)
-        self.button.grid(row=2, column=1)
-        self.button = tk.Button(self, text="Create Account", command=self.handle_create_account)
-        self.button.grid(row=2, column=2)
+        self.button_login = tk.Button(self, text="Login", command=self.handle_login)
+        self.button_login.grid(row=2, column=1)
+        self.button_create_account = tk.Button(self, text="Create Account", command=self.handle_create_account)
+        self.button_create_account.grid(row=2, column=2)
 
         self.update_accounts()
 
     def update_accounts(self):
         self.state.write_to_server("LA")
-        self.after_id = self.after(500, self.update_accounts)
+        self.after_id = self.after(100000, self.update_accounts)
 
     def leave_to_navigation(self):
         print("Leaving Onboarding...")
@@ -235,13 +284,13 @@ class Onboarding(tk.Frame):
 
         hashed_password = self.enhash(password)
         return_value = "CR" + username + " " + hashed_password
-        print(return_value)
         if self.state.write_to_server(return_value):
-            # TODO fix login logic
-            # login_value = "LI" + username + " " + hashed_password
-            # if self.state.write_to_server(login_value):
-            self.state.current_user = username
-            self.after(100, self.check_login_success)
+            pass
+            #sleep for 10 seconsd
+            login_value = "LI" + username + " " + hashed_password
+            if self.state.write_to_server(login_value):
+                self.state.current_user = username
+                self.after(100, self.check_login_success)
 
     def check_login_success(self):
         if self.state.current_user is None:
@@ -386,10 +435,6 @@ class Chat(tk.Frame):
             self.status_label.config(text="Failed to send message.", fg="red")
 
 
-    def check_username(self, username):
-        # (TODO): Implement this method
-        return True
-
 class MessageDisplay(tk.Frame):
     def __init__(self, parent, controller, state : CentralState):
         tk.Frame.__init__(self, parent)
@@ -405,7 +450,6 @@ class MessageDisplay(tk.Frame):
             command=self.back_to_navigation
         )
         self.back_button.grid(row=0, column=0, sticky="w", padx=10, pady=10)
-
 
         self.delete_button = ttk.Button(
             self,
@@ -426,8 +470,6 @@ class MessageDisplay(tk.Frame):
         self.paned.add(self.message_list)
         self.paned.add(self.message_content)
         self.current_user = self.state.current_user
-        print(self.state.current_user)
-        print(self.current_user)
 
 
         self.messages = self.state.messages
@@ -443,14 +485,15 @@ class MessageDisplay(tk.Frame):
 
     def update_messages(self):
         self.state.write_to_server("RE" + self.current_user + " " + str(self.number_of_messages))
-        self.after(500, self.update_messages)
+        self.after(1000, self.update_messages)
 
 
     def display_message(self, event):
         if not self.message_list.curselection():
             return
-
+        print("Displaying message", self.messages)
         selection = self.message_list.curselection()[0]
+
         full_message = self.state.messages[selection]
 
         message_text = f"From: {full_message['Sender']}\n"
@@ -465,7 +508,6 @@ class MessageDisplay(tk.Frame):
     def delete_message(self):
         # todo deal with message deletion later
         if self.message_list.curselection():
-            print(self.message_list.curselection())
             self.state.write_to_server("DM" + self.state.current_user + " " + self.state.messages[self.message_list.curselection()[0]]['Message ID'])
             selection = self.message_list.curselection()[0]
             self.message_list.delete(selection)
@@ -536,7 +578,6 @@ class SearchAccount(tk.Frame):
         self.results_text.config(state='disabled')
 
     def search_account(self):
-        """Search for an account dynamically."""
         search_term = self.username_textbox.get()
         self.display_accounts(search_term)
 
