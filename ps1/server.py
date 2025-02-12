@@ -108,14 +108,16 @@ def read_message(username, num):
     return [True, {"num_read": num_read, "messages": returned_messages}]
 
 def delete_message(username, id):
+    print("Deleting message", id, "from", username)
     if username not in accounts:
-        return [False, "ER2: attempting to delete a message from an account that does not exist"]
-
+        return [False, "ER3: attempting to delete a message from an account that does not exist"]
+    # parsing error
+    message_id = int(id)
     for i in range(len(accounts[username]["messageHistory"])):
-        if accounts[username]["messageHistory"][i]["messageId"] == id:
+        if accounts[username]["messageHistory"][i]["messageId"] == message_id:
             del accounts[username]["messageHistory"][i]
             return [True, ""]
-    return [False, "ER2: account did not receive message with that id"]
+    return [False, "ER4: account did not receive message with that id"]
 
 def delete_account(username):
     del accounts[username]
@@ -186,10 +188,8 @@ def service_connection_wp(key, mask):
             match request_type:
                 case "CR":
                     # create account
-                    print(in_data)
                     username, password = in_data.split(" ")
                     call_info = create_account(username, password)
-                    print(accounts)
                     if call_info[0] == True:
                         return_data = "CRT"
                     else:
@@ -222,7 +222,6 @@ def service_connection_wp(key, mask):
                     return_data = "LAT" + " ".join(acct_names)
 
                 case "SE":
-                    print("SENDING MESSAGE", in_data)
                     in_data_array = in_data.split(" ")
                     from_username = in_data_array[0]
                     to_username = in_data_array[1]
@@ -263,6 +262,7 @@ def service_connection_wp(key, mask):
                 case "DM":
                     # delete message
                     username, id = in_data.split(" ")
+                    print("case DM Deleting message", id, "from", username)
                     call_info = delete_message(username, id)
                     if call_info[0] == True:
                         return_data = "DMT"
@@ -280,8 +280,6 @@ def service_connection_wp(key, mask):
                         return_data = call_info[1][:3]
 
             # return_data = trans_to_pig_latin(data.outb.decode("utf-8"))
-            print(str(len(return_data)))
-            print(return_data)
             return_data = str(len(return_data)) + return_data
             print("returning: ", return_data)
             return_data = return_data.encode("utf-8")
