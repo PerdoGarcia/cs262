@@ -5,8 +5,8 @@ import selectors
 import types
 import os
 from dotenv import load_dotenv
-# Helpers for processing each file, separated for conciseness
-# from server_helpers import *
+import json
+
 sel = selectors.DefaultSelector()
 
 load_dotenv()
@@ -122,7 +122,7 @@ def accept_wrapper(sock):
     events = selectors.EVENT_READ | selectors.EVENT_WRITE
     sel.register(conn, events, data=data)
 
-# NOTE: CURRENTLY WIRE PROTOCOL VERSION
+# WIRE PROTOCOL VERSION
 def service_connection_wp(key, mask):
     sock = key.fileobj
     data = key.data
@@ -255,18 +255,190 @@ def service_connection_wp(key, mask):
                     username, id = in_data.split(" ")
                     call_info = delete_message(username, id)
                     if call_info[0] == True:
-                        return_data = "SET"
+                        return_data = "DMT"
                     else:
                         # Pull just the error code out when we are using custom wire protocol
                         return_data = call_info[1][:3]
 
                 case "DA":
                     username = in_data
-                    return "DAT"
+                    call_info = delete_account(username)
+                    if call_info[0] == True:
+                        return_data = "DAT"
+                    else:
+                        # Pull just the error code out when we are using custom wire protocol
+                        return_data = call_info[1][:3]
 
             # return_data = trans_to_pig_latin(data.outb.decode("utf-8"))
             print(str(len(return_data)))
             print(return_data)
+            return_data = str(len(return_data)) + return_data
+            print("returning: ", return_data)
+            return_data = return_data.encode("utf-8")
+            sent = sock.sendall(return_data)
+
+# JSON Version
+def service_connection_json(key, mask):
+    sock = key.fileobj
+    data = key.data
+    if mask & selectors.EVENT_READ:
+        # TODO: Recieve the first numeric bytes + turn into a number
+        str_bytes = ""
+        recv_data = sock.recv(1)
+        while recv_data:
+            if len(recv_data.decode("utf-8")) > 0:
+                if (recv_data.decode("utf-8")).isnumeric():
+                    str_bytes += recv_data.decode("utf-8")
+                else:
+                    break
+            recv_data = sock.recv(1)
+        if not recv_data:
+            print(f"Closing connection to {data.addr}")
+            sel.unregister(sock)
+            sock.close()
+
+        num_bytes = int(str_bytes)
+
+        # TODO: read more bytes using recv until you've fit all the bytes you need in
+        data.outb += recv_data
+        cur_bytes = 1
+        while(cur_bytes < num_bytes):
+            recv_data = sock.recv(num_bytes - cur_bytes)
+            if recv_data:
+                print("RECEIVED RAW DATA:", recv_data)
+                data.outb += recv_data
+                cur_bytes += len(recv_data.decode("utf-8"))
+            else:
+                print(f"Closing connection to {data.addr}")
+                sel.unregister(sock)
+                sock.close()
+
+    if mask & selectors.EVENT_WRITE:
+        if not data.outb:
+            return
+        if data.outb:
+            # TODO: change this line to process as we need to
+            in_data = data.outb.decode("utf-8")
+            # Flush out the input data from the buffer so that things remain synced
+            data.outb = data.outb[len(in_data):]
+            # Convert data to json format
+            in_data_json = json.loads(in_data)
+            # # Get 2 letter request type code
+            request_type = in_data_json["type"]
+            # # The rest of the sent over data is the data needed to complete the request
+            # in_data = in_data[2:]
+
+            # Reserve error code ER0 for unknown request type
+            return_data = {"success": False, "errorMsg": "ER0: unknown request type"}
+            match request_type:
+                case "CR":
+                    # create account
+                    # print(in_data)
+                    username = in_data_json["username"]
+                    password = in_data_json["password"]
+                    call_info = create_account(username, password)
+                    # print(accounts)
+                    if call_info[0] == True:
+                        return_data = {"success": True, "errorMsg": ""}
+                    else:
+                        # Pull entire error message for json
+                        return_data["errorMsg"] = call_info[1]
+
+                case "LI":
+                    # login
+                    username = in_data_json["username"]
+                    password = in_data_json["password"]
+                    call_info = login(username, password, sock, data)
+
+                    if call_info[0] == True:
+                        return_data = {"success": True, "errorMsg": ""}
+                    else:
+                        # Pull entire error message for json
+                        return_data["errorMsg"] = call_info[1]
+
+                case "LO":
+                    # logout
+                    username = in_data_json["username"]
+                    call_info = logout(username)
+                    if call_info[0] == True:
+                        return_data = {"success": True, "errorMsg": ""}
+                    else:
+                        # Pull entire error message for json
+                        return_data["errorMsg"] = call_info[1]
+
+                case "LA":
+                    # list accounts
+                    acct_names = list_accounts()[1]
+                    return_data = {"success": True, "accounts": acct_names, "errorMsg": ""}
+
+                case "SE":
+                    print("SENDING MESSAGE", in_data)
+                    # in_data_array = in_data.split(" ")
+                    # from_username = in_data_array[0]
+                    # to_username = in_data_array[1]
+                    # time = in_data_array[2]
+                    # message = " ".join(in_data_array[3:])
+                    from_username = in_data_json["from_username"]
+                    to_username = in_data_json["to_username"]
+                    time = in_data_json["timestamp"]
+                    message = in_data_json["message"]
+                    # from_username, to_username, time, message = in_data.split(" ")
+                    call_info = send_message(from_username, to_username, message, time)
+                    # send message
+                    # TODO: should we send a notif to the receiver's socket if they are logged on?
+                    if call_info[0] == True:
+                        return_data = {"success": True, "errorMsg": ""}
+                        if accounts[to_username]["loggedIn"] == True:
+                            to_data = accounts[to_username]["data"]
+                            to_sock = accounts[to_username]["socket"]
+                            message_dict = call_info[1]
+                            # sending_data = "SEL" + str(message_dict["messageId"]) + " " + message_dict["sender"] + " " + message_dict["timestamp"] + " " + str(len(message_dict["message"])) + message_dict["message"]
+                            sending_data = json.dumps(message_dict)
+                            sending_data = str(len(sending_data)) + sending_data
+                            # Send data to the logged in user's socket
+                            sending_data = sending_data.encode("utf-8")
+                            sent = to_sock.sendall(sending_data)
+                            # to_data.outb = to_data.outb[total_len_sending+1:]
+
+                    else:
+                        # Pull the entire error message for json
+                        return_data["errorMsg"] = call_info[1]
+
+                case "RE":
+                    username = in_data_json["username"]
+                    num = in_data_json["number"]
+                    call_info = read_message(username, num)
+                    if call_info[0] == True:
+                        return_data = call_info[1]
+                    else:
+                        # Pull the entire error message for json
+                        return_data["errorMsg"] = call_info[1]
+
+                case "DM":
+                    # delete message
+                    username = in_data_json["username"]
+                    id = in_data_json["id"]
+                    call_info = delete_message(username, id)
+                    if call_info[0] == True:
+                        return_data = {"success": True, "errorMsg": ""}
+                    else:
+                        # Pull the entire error message for json
+                        return_data["errorMsg"] = call_info[1]
+
+                case "DA":
+                    username = in_data_json["username"]
+                    call_info = delete_account(username)
+                    if call_info[0] == True:
+                        return_data = {"success": True, "errorMsg": ""}
+                    else:
+                        # Pull just the error code out when we are using custom wire protocol
+                        return_data["errorMsg"] = call_info[1]
+
+            # return_data = trans_to_pig_latin(data.outb.decode("utf-8"))
+            print(str(len(return_data)))
+            print(return_data)
+            # Send Json versions back to client
+            return_data = json.dumps(return_data)
             return_data = str(len(return_data)) + return_data
             print("returning: ", return_data)
             return_data = return_data.encode("utf-8")
