@@ -99,7 +99,7 @@ def read_message(username, num):
 
 def delete_message(username, id):
     if username not in accounts:
-        return [False, "ER1: attempting to delete a message from an account that does not exist"]
+        return [False, "ER2: attempting to delete a message from an account that does not exist"]
 
     for i in range(len(accounts[username]["messageHistory"])):
         if accounts[username]["messageHistory"][i]["messageId"] == id:
@@ -228,7 +228,7 @@ def service_connection_wp(key, mask):
                             to_data = accounts[to_username]["data"]
                             to_sock = accounts[to_username]["socket"]
                             message_dict = call_info[1]
-                            sending_data = "SEL" + str(message_dict["messageId"]) + " " + message_dict["sender"] + " " + message_dict["timestamp"] + " " + str(len(message_dict["message"])) + message_dict["message"]
+                            sending_data = "SEL" + str(message_dict["messageId"]) + " " + message_dict["sender"] + " " + message_dict["timestamp"] + " " + str(len(message_dict["message"])) + " "  + message_dict["message"]
                             sending_data = str(len(sending_data)) + sending_data
                             # Send data to the logged in user's socket
                             sending_data = sending_data.encode("utf-8")
