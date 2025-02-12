@@ -13,9 +13,10 @@ load_dotenv()
 class CentralState:
     def __init__(self):
         self.current_user = None
-        self.messages = {}
+        self.messages = []
         self.accounts = []
         self.socket = None
+        self.is_logged_in = False
         self.is_connected = False
         self.host = os.environ.get("HOST_SERVER")
         self.port = int(os.environ.get("PORT_SERVER"))
@@ -23,7 +24,7 @@ class CentralState:
 
     def reset_state(self):
         self.current_user = None
-        self.messages = {}
+        self.messages = []
 
 
     def connect_to_server(self):
@@ -92,11 +93,11 @@ class CentralState:
                 pass
 
             case "SEL":
-                print("message recieved while logged in")
+                print("message recieved while logged in", data)
                 parts = data.split(" ")
-                message_id = parts[1]
-                sender = parts[2]
-                timestamp = parts[3]
+                message_id = parts[0]
+                sender = parts[1]
+                timestamp = parts[2]
                 message_content = " ".join(parts[4:])
                 self.messages.append({
                         "Message ID": message_id,
@@ -106,9 +107,11 @@ class CentralState:
                     })
 
             case "LIT":
+                self.logged_in = True
                 self.current_user = data
                 pass
             case "LOT":
+                self.logged_in = False
                 self.reset_state()
                 pass
             case "LAT":
@@ -118,7 +121,12 @@ class CentralState:
                 print("Retrieved messages:", data)
                 parts = data.split(" ")
                 num_read = int(parts[0])
-                self.messages = []
+
+                # If there are no messages to read, don't update the message list at all
+                if num_read == 0:
+                    return
+
+                new_messages = []
                 index = 1
 
                 for _ in range(num_read):
@@ -129,12 +137,15 @@ class CentralState:
                     message_content = " ".join(parts[index + 4 : index + 4 + message_length])
                     index += 4 + message_length
 
-                    self.messages.append({
+                    new_messages.append({
                         "Message ID": message_id,
                         "Sender": sender,
                         "Timestamp": timestamp,
                         "Message": message_content
                     })
+
+                if new_messages:
+                    self.messages = new_messages
 
                 print(f"Retrieved {num_read} messages:")
                 for msg in self.messages:
@@ -145,8 +156,16 @@ class CentralState:
             case "ER0":
                 pass
             case "ER1":
+                self.logged_in = False
+                self.reset_state()
                 print("some error", data)
+            case "ER2":
+                self.logged_in = False
+                self.reset_state()
+                print("ER2: incorrect password", data)
             case "DAT":
+                self.logged_in = False
+                self.reset_state()
                 pass
             case _:
                 print(server_message)
@@ -199,8 +218,8 @@ class App(tk.Tk):
 
         if page == SearchAccount or page == Chat or page == Onboarding:
             frame.update_accounts()
-        elif page == MessageDisplay:
-            frame.update_messages()
+        # elif page == MessageDisplay:
+        #     frame.update_messages()
 
     def get_state(self):
         return self.state
@@ -269,6 +288,8 @@ class Onboarding(tk.Frame):
             if self.state.write_to_server(return_value):
                 self.state.current_user = username
                 self.after(100, self.check_login_success)
+            else:
+                messagebox.showerror("Error", "Login failed. Please try again.")
         else:
             messagebox.showerror("Error", "Account does not exist.")
 
@@ -278,6 +299,9 @@ class Onboarding(tk.Frame):
         if not username or not password:
             messagebox.showerror("Error", "Please fill in both username and password.")
             return
+        if ' ' in username or ' ' in password:
+            messagebox.showerror("Error", "Username and password cannot contain spaces")
+            return
         if username in self.state.accounts:
             messagebox.showerror("Error", "Account already exists.")
             return
@@ -285,15 +309,13 @@ class Onboarding(tk.Frame):
         hashed_password = self.enhash(password)
         return_value = "CR" + username + " " + hashed_password
         if self.state.write_to_server(return_value):
-            pass
             #sleep for 10 seconsd
             login_value = "LI" + username + " " + hashed_password
             if self.state.write_to_server(login_value):
-                self.state.current_user = username
-                self.after(100, self.check_login_success)
+                self.after(300, self.check_login_success)
 
     def check_login_success(self):
-        if self.state.current_user is None:
+        if self.state.current_user is None and self.state.is_logged_in is False:
             messagebox.showerror("Error", "Login failed. Please try again.")
         else:
             self.state.current_user = self.textbox_username.get()
@@ -365,6 +387,7 @@ class Navigation(tk.Frame):
     def handle_logout(self):
         if self.state.write_to_server("LO" + self.state.current_user):
             self.state.reset_state()
+            self.state.is_logged_in = False
             self.controller.show_frame(Onboarding)
 
 class Chat(tk.Frame):
@@ -434,20 +457,20 @@ class Chat(tk.Frame):
         else:
             self.status_label.config(text="Failed to send message.", fg="red")
 
-
 class MessageDisplay(tk.Frame):
     def __init__(self, parent, controller, state : CentralState):
         tk.Frame.__init__(self, parent)
         self.controller = controller
         self.state = state
         self.number_of_messages = 10
+
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 
         self.back_button = ttk.Button(
             self,
             text="Back to Navigation",
-            command=self.back_to_navigation
+            command=lambda: controller.show_frame(Navigation)
         )
         self.back_button.grid(row=0, column=0, sticky="w", padx=10, pady=10)
 
@@ -469,50 +492,62 @@ class MessageDisplay(tk.Frame):
 
         self.paned.add(self.message_list)
         self.paned.add(self.message_content)
-        self.current_user = self.state.current_user
 
-
-        self.messages = self.state.messages
-
+        self.messages = self.state.messages.copy()
         for msg in self.messages:
-            self.message_list.insert(tk.END, msg)
+            formatted_msg = f"From: {msg['Sender']}: {msg['Message']} \n\n At: {msg['Timestamp']}"
+            self.message_list.insert(tk.END, formatted_msg)
 
-    # do something with threads to listen for messages
+        self.update_messages()
 
     def back_to_navigation(self):
         self.after_cancel(self.after(500, self.update_messages))
         self.controller.show_frame(Navigation)
 
     def update_messages(self):
-        self.state.write_to_server("RE" + self.current_user + " " + str(self.number_of_messages))
+        self.state.write_to_server("RE" + self.state.current_user + " " + str(self.number_of_messages))
+
+        # Only update display if messages have actually changed
+        if self.state.messages != self.messages:
+            # Store current selection/scroll position if needed
+            current_selection = self.message_list.curselection()
+            current_scroll = self.message_list.yview()
+
+            # Update our message copy
+            self.messages = self.state.messages.copy()  # Make a copy to prevent reference issues
+
+            # Rebuild display
+            self.message_list.delete(0, tk.END)
+            for msg in self.messages:
+                formatted_msg = f"From: {msg['Sender']}: {msg['Message']} \n\n At: {msg['Timestamp']}"
+                self.message_list.insert(tk.END, formatted_msg)
+
+            # Restore selection/scroll position if needed
+            if current_selection:
+                self.message_list.selection_set(current_selection)
+            self.message_list.yview_moveto(current_scroll[0])
+
         self.after(1000, self.update_messages)
 
 
     def display_message(self, event):
         if not self.message_list.curselection():
             return
-        print("Displaying message", self.messages)
+
         selection = self.message_list.curselection()[0]
-
-        full_message = self.state.messages[selection]
-
-        message_text = f"From: {full_message['Sender']}\n"
-        message_text += f"Time: {full_message['Timestamp']}\n"
-        message_text += f"Message: {full_message['Message']}"
+        message_dict = self.messages[selection]
+        formatted_message = f"From: {message_dict['Sender']}: {message_dict['Message']} \n\n At: {message_dict['Timestamp']}"
 
         self.message_content.config(state='normal')
         self.message_content.delete(1.0, tk.END)
-        self.message_content.insert(1.0, message_text)
+        self.message_content.insert(1.0, formatted_message)
         self.message_content.config(state='disabled')
 
     def delete_message(self):
-        # todo deal with message deletion later
         if self.message_list.curselection():
-            self.state.write_to_server("DM" + self.state.current_user + " " + self.state.messages[self.message_list.curselection()[0]]['Message ID'])
             selection = self.message_list.curselection()[0]
             self.message_list.delete(selection)
             self.message_content.config(state='normal')
-            # c
             self.message_content.delete(1.0, tk.END)
             self.message_content.config(state='disabled')
         pass
