@@ -585,7 +585,7 @@ def service_connection_json(key, mask):
                     call_info = create_account(username, password)
                     # print(accounts)
                     if call_info[0] == True:
-                        return_data = {"success": True, "errorMsg": ""}
+                        return_data = {"type" : "CRT", "success": True, "errorMsg": ""}
                     else:
                         # Pull entire error message for json
                         return_data["errorMsg"] = call_info[1]
@@ -597,7 +597,7 @@ def service_connection_json(key, mask):
                     call_info = login(username, password, sock)
 
                     if call_info[0] == True:
-                        return_data = {"success": True, "errorMsg": ""}
+                        return_data = {"type" : "LIT", "success": True, "errorMsg": ""}
                     else:
                         # Pull entire error message for json
                         return_data["errorMsg"] = call_info[1]
@@ -607,7 +607,7 @@ def service_connection_json(key, mask):
                     username = in_data_json["username"]
                     call_info = logout(username)
                     if call_info[0] == True:
-                        return_data = {"success": True, "errorMsg": ""}
+                        return_data = {"type" : "LOT", "success": True, "errorMsg": ""}
                     else:
                         # Pull entire error message for json
                         return_data["errorMsg"] = call_info[1]
@@ -615,7 +615,7 @@ def service_connection_json(key, mask):
                 case "LA":
                     # list accounts
                     acct_names = list_accounts()[1]
-                    return_data = {"success": True, "accounts": acct_names, "errorMsg": ""}
+                    return_data = {"type" : "LAT", "success": True, "accounts": acct_names, "errorMsg": ""}
 
                 case "SE":
                     print("SENDING MESSAGE", in_data)
@@ -633,7 +633,7 @@ def service_connection_json(key, mask):
                     # send message
                     # TODO: should we send a notif to the receiver's socket if they are logged on?
                     if call_info[0] == True:
-                        return_data = {"success": True, "errorMsg": ""}
+                        return_data = {"type" : "SET", "success": True, "errorMsg": ""}
                         if accounts[to_username]["loggedIn"] == True:
                             # to_data = accounts[to_username]["data"]
                             to_sock = accounts[to_username]["socket"]
@@ -651,6 +651,7 @@ def service_connection_json(key, mask):
                         return_data["errorMsg"] = call_info[1]
 
                 case "RE":
+                    print("READING MESSAGES", in_data)
                     username = in_data_json["username"]
                     num = in_data_json["number"]
                     call_info = read_message(username, num)
@@ -659,6 +660,8 @@ def service_connection_json(key, mask):
                     else:
                         # Pull the entire error message for json
                         return_data["errorMsg"] = call_info[1]
+                    print("return_data", return_data)
+                    return return_data
 
                 case "DM":
                     # delete message
@@ -708,9 +711,9 @@ if __name__ == "__main__":
                     accept_wrapper(key.fileobj)
                 else:
                     # Version that understands the wire protocol
-                    service_connection_wp(key, mask)
+                    # service_connection_wp(key, mask)
                     # Version that understands json
-                    # service_connection_json(key, mask)
+                    service_connection_json(key, mask)
     except KeyboardInterrupt:
         print("Caught keyboard interrupt, exiting")
     finally:
