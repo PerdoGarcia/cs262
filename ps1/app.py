@@ -58,6 +58,7 @@ class CentralState:
         match request_type:
             case "CRT":
                 self.current_user = data
+
                 pass
             case "LIT":
                 self.current_user = data
@@ -144,7 +145,13 @@ class App(tk.Tk):
             self.frames[page] = page(self.container, self, self.state)
             self.frames[page].grid(row=0, column=0, sticky="nsew")
 
+        frame = self.frames[page]
         self.frames[page].tkraise()
+
+        if page == SearchAccount or page == Chat or page == Onboarding:
+            frame.update_accounts()
+        elif page == MessageDisplay:
+            frame.update_messages()
 
     def get_state(self):
         return self.state
@@ -179,9 +186,17 @@ class Onboarding(tk.Frame):
         self.button = tk.Button(self, text="Create Account", command=self.handle_create_account)
         self.button.grid(row=2, column=2)
 
-    def refresh_accounts(self):
-        self.current_users = self.state.accounts
-        self.after(100, self.refresh_accounts)
+        self.update_accounts()
+
+    def update_accounts(self):
+        self.state.write_to_server("LA")
+        self.after_id = self.after(500, self.update_accounts)
+
+    def leave_to_navigation(self):
+        print("Leaving Onboarding...")
+        self.after_cancel(self.after_id)
+        self.controller.show_frame(Navigation)
+
 
     # gpt
     def enhash(self, password):
@@ -190,38 +205,52 @@ class Onboarding(tk.Frame):
         return shifted[::-1]
 
     def handle_login(self):
-        if not self.textbox_username.get() or not self.textbox_password.get():
+        username = self.textbox_username.get()
+        password = self.textbox_password.get()
+        if not username or not password:
             messagebox.showerror("Error", "Please fill in both username and password.")
             return
+        if ' ' in username or ' ' in password:
+            messagebox.showerror("Error", "Username and password cannot contain spaces")
+            return
+
+        if username in self.state.accounts:
+            hashed_password = self.enhash(password)
+            return_value = "LI" + username + " " + hashed_password
+            if self.state.write_to_server(return_value):
+                self.state.current_user = username
+                self.after(100, self.check_login_success)
         else:
-            if self.textbox_username.get() in self.current_users:
-                hashed_password = self.enhash(self.textbox_password.get())
-                return_value = "LI" + self.textbox_username.get() + " " + hashed_password
-                if self.state.write_to_server(return_value):
-                    # todo do a check for a user existing
-                    self.after(100, self.check_login_success)
+            messagebox.showerror("Error", "Account does not exist.")
 
     def handle_create_account(self):
-        if not self.textbox_username.get() or not self.textbox_password.get():
+        username = self.textbox_username.get()
+        password = self.textbox_password.get()
+        if not username or not password:
             messagebox.showerror("Error", "Please fill in both username and password.")
             return
-        else:
-            # todo: hash password
-            hashed_password = self.enhash(self.textbox_password.get())
-            return_value = "CR" + self.textbox_username.get() + " " + hashed_password
-            print(return_value)
-            self.state.current_user = self.textbox_username.get()
-            if self.state.write_to_server(return_value):
-            # todo handle if user already exists
-                self.after(100, self.check_login_success)
+        if username in self.state.accounts:
+            messagebox.showerror("Error", "Account already exists.")
+            return
+
+        hashed_password = self.enhash(password)
+        return_value = "CR" + username + " " + hashed_password
+        print(return_value)
+        if self.state.write_to_server(return_value):
+            # TODO fix login logic
+            # login_value = "LI" + username + " " + hashed_password
+            # if self.state.write_to_server(login_value):
+            self.state.current_user = username
+            self.after(100, self.check_login_success)
 
     def check_login_success(self):
         if self.state.current_user is None:
             messagebox.showerror("Error", "Login failed. Please try again.")
         else:
             self.state.current_user = self.textbox_username.get()
-
-            self.controller.show_frame(Navigation)
+            self.textbox_username.delete(0, tk.END)
+            self.textbox_password.delete(0, tk.END)
+            self.leave_to_navigation()
 
 
 class Navigation(tk.Frame):
@@ -300,7 +329,7 @@ class Chat(tk.Frame):
         self.back_button = tk.Button(
             self,
             text="Back to Navigation",
-            command=lambda: controller.show_frame(Navigation)
+            command=self.back_to_navigation
         )
         self.back_button.grid(row=0, column=0, columnspan=3, pady=(10,20), sticky="w", padx=10)
 
@@ -326,45 +355,40 @@ class Chat(tk.Frame):
 
         self.update_accounts()
 
+    def back_to_navigation(self):
+        self.after_cancel(self.after_id)
+        self.controller.show_frame(Navigation)
 
     def update_accounts(self):
         self.state.write_to_server("LA")
-        self.after(100, self.update_accounts)
+        self.after_id = self.after(500, self.update_accounts)
 
     def on_button_click(self):
         username = self.username_textbox.get()
         message = self.entry_textbox.get()
-        if message and username:
-            # (TODO): validation
 
-            if username in self.state.accounts:
-                send_value = "SE" + self.state.current_user + " " + username + " " + (str(datetime.now()).replace(" ", "")) + " " + message
-                self.state.write_to_server(send_value)
-                # check if message was actually sent
-                self.status_label.config(
-                    text="Email sent successfully!",
-                    fg="green"
-                )
-            else:
-                self.status_label.config(
-                    text="Failed to send email.",
-                    fg="red"
-                )
-                return
+        if not username or not message:
+            self.status_label.config(text="Please fill in both username and message.", fg="red")
+            return
 
+        if username not in self.state.accounts:
+            self.status_label.config(text="Failed to send message.", fg="red")
+            return
+
+        timestamp = str(datetime.now()).replace(" ", "")
+        send_value = f"SE{self.state.current_user} {username} {timestamp} {message}"
+
+        if self.state.write_to_server(send_value):
+            self.status_label.config(text="Message sent successfully!", fg="green")
             self.entry_textbox.delete(0, tk.END)
             self.username_textbox.delete(0, tk.END)
         else:
-            self.status_label.config(
-                text="Please fill in both username and message.",
-                fg="red"
-            )
-            return
+            self.status_label.config(text="Failed to send message.", fg="red")
+
 
     def check_username(self, username):
         # (TODO): Implement this method
         return True
-        pass
 
 class MessageDisplay(tk.Frame):
     def __init__(self, parent, controller, state : CentralState):
@@ -378,7 +402,7 @@ class MessageDisplay(tk.Frame):
         self.back_button = ttk.Button(
             self,
             text="Back to Navigation",
-            command=lambda: controller.show_frame(Navigation)
+            command=self.back_to_navigation
         )
         self.back_button.grid(row=0, column=0, sticky="w", padx=10, pady=10)
 
@@ -401,6 +425,10 @@ class MessageDisplay(tk.Frame):
 
         self.paned.add(self.message_list)
         self.paned.add(self.message_content)
+        self.current_user = self.state.current_user
+        print(self.state.current_user)
+        print(self.current_user)
+
 
         self.messages = self.state.messages
 
@@ -409,9 +437,13 @@ class MessageDisplay(tk.Frame):
 
     # do something with threads to listen for messages
 
+    def back_to_navigation(self):
+        self.after_cancel(self.after(500, self.update_messages))
+        self.controller.show_frame(Navigation)
+
     def update_messages(self):
-        self.state.write_to_server("RE" + self.state.current_user + " " + str(self.number_of_messages))
-        self.after(1000, self.update_messages)
+        self.state.write_to_server("RE" + self.current_user + " " + str(self.number_of_messages))
+        self.after(500, self.update_messages)
 
 
     def display_message(self, event):
@@ -434,6 +466,7 @@ class MessageDisplay(tk.Frame):
         # todo deal with message deletion later
         if self.message_list.curselection():
             print(self.message_list.curselection())
+            self.state.write_to_server("DM" + self.state.current_user + " " + self.state.messages[self.message_list.curselection()[0]]['Message ID'])
             selection = self.message_list.curselection()[0]
             self.message_list.delete(selection)
             self.message_content.config(state='normal')
@@ -448,6 +481,8 @@ class SearchAccount(tk.Frame):
         tk.Frame.__init__(self, parent)
         self.controller = controller
         self.state = state
+        self.accounts = self.state.accounts
+        self.is_first_display = True
 
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(2, weight=1)
@@ -455,7 +490,7 @@ class SearchAccount(tk.Frame):
         self.back_button = ttk.Button(
             self,
             text="Back to Navigation",
-            command=lambda: controller.show_frame(Navigation)
+            command=self.back_to_navigation
         )
         self.back_button.grid(row=0, column=0, sticky="w", padx=10, pady=10)
 
@@ -473,12 +508,20 @@ class SearchAccount(tk.Frame):
 
         self.update_accounts()
 
+    def back_to_navigation(self):
+        self.after_cancel(self.after_id)
+        self.controller.show_frame(Navigation)
+
     def update_accounts(self):
         self.state.write_to_server("LA")
         self.display_accounts()
-        self.after(100, self.update_accounts)
+        self.after_id = self.after(500, self.update_accounts)
 
     def display_accounts(self, filter_text=None):
+        if not self.is_first_display and self.state.accounts == self.accounts:
+            return
+        self.is_first_display = False
+        self.accounts = self.state.accounts
         self.results_text.config(state='normal')
         self.results_text.delete(1.0, tk.END)
 

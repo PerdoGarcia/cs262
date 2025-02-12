@@ -26,6 +26,7 @@ def create_account(username, password):
         return [False, "ER1: account is already in database"]
 
 def login(username, password, sock, data):
+    # TODO fix login later talk with alice
     # TODO: when a user logs in bind their username to the socket that requested it if it succeeded
     if username not in accounts:
         # error: account with that username does not exist
