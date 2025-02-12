@@ -19,6 +19,16 @@ PORT = int(os.environ.get("PORT_SERVER"))
 accounts = {}
 messageId = 0
 
+# HELPER FOR UNIT TESTING
+def get_accounts_structure():
+    return accounts
+
+def reset_messageId():
+    messageId = 0
+
+def clear_accounts_structure():
+    accounts.clear()
+
 # HELPERS FOR SERVER ACTIONS
 def create_account(username, password):
     print("Creating account")
@@ -285,6 +295,7 @@ def service_connection_json(key, mask):
         # TODO: Recieve the first numeric bytes + turn into a number
         str_bytes = ""
         recv_data = sock.recv(1)
+        print("recv_data", recv_data.decode("utf-8"))
         while recv_data:
             if len(recv_data.decode("utf-8")) > 0:
                 if (recv_data.decode("utf-8")).isnumeric():
@@ -293,25 +304,27 @@ def service_connection_json(key, mask):
                     break
             recv_data = sock.recv(1)
         if not recv_data:
+            print("closing connection here")
             print(f"Closing connection to {data.addr}")
             sel.unregister(sock)
             sock.close()
+        else:
+            num_bytes = int(str_bytes)
 
-        num_bytes = int(str_bytes)
-
-        # TODO: read more bytes using recv until you've fit all the bytes you need in
-        data.outb += recv_data
-        cur_bytes = 1
-        while(cur_bytes < num_bytes):
-            recv_data = sock.recv(num_bytes - cur_bytes)
-            if recv_data:
-                print("RECEIVED RAW DATA:", recv_data)
-                data.outb += recv_data
-                cur_bytes += len(recv_data.decode("utf-8"))
-            else:
-                print(f"Closing connection to {data.addr}")
-                sel.unregister(sock)
-                sock.close()
+            # TODO: read more bytes using recv until you've fit all the bytes you need in
+            data.outb += recv_data
+            cur_bytes = 1
+            while(cur_bytes < num_bytes):
+                recv_data = sock.recv(num_bytes - cur_bytes)
+                if recv_data:
+                    print("RECEIVED RAW DATA:", recv_data)
+                    data.outb += recv_data
+                    cur_bytes += len(recv_data.decode("utf-8"))
+                else:
+                    print(f"Closing connection to {data.addr}")
+                    sel.unregister(sock)
+                    sock.close()
+                    
 
     if mask & selectors.EVENT_WRITE:
         if not data.outb:
@@ -456,7 +469,6 @@ if __name__ == "__main__":
         while True:
             events = sel.select(timeout=None)
             for key, mask in events:
-
                 if key.data is None:
                     accept_wrapper(key.fileobj)
                 else:
@@ -467,4 +479,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("Caught keyboard interrupt, exiting")
     finally:
+        print("closing server")
         sel.close()
