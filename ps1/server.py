@@ -640,6 +640,8 @@ def service_connection_json(key, mask):
                             to_sock = accounts[to_username]["socket"]
                             message_dict = call_info[1]
                             message_dict["type"] = "SEL"
+                            # this was the line that was causing the error
+                            message_dict["success"] = True
                             # sending_data = "SEL" + str(message_dict["messageId"]) + " " + message_dict["sender"] + " " + message_dict["timestamp"] + " " + str(len(message_dict["message"])) + message_dict["message"]
                             sending_data = json.dumps(message_dict)
                             sending_data = str(len(sending_data)) + sending_data
@@ -663,7 +665,9 @@ def service_connection_json(key, mask):
                     else:
                         # Pull the entire error message for json
                         return_data["errorMsg"] = call_info[1]
-                    print("return_data", return_data)
+                    print("return_data aftee RE", return_data)
+                    print("num type:", type(num), "value:", num)  # Add this
+
 
                 case "DM":
                     # delete message
