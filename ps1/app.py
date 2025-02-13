@@ -12,6 +12,23 @@ import json
 load_dotenv()
 
 class App(tk.Tk):
+    """
+    Main class for the chat app. Handles all UI and server communication.
+
+
+    Attributes:
+    - current_user (str): The username of the currently logged in user.
+    - messages (list): A list of dictionaries representing messages.
+    - accounts (list): A list of usernames.
+    - socket (socket): The socket object for server communication.
+    - is_logged_in (bool): Whether the user is logged in.
+    - is_connected (bool): Whether the client is connected to the server.
+    - number_of_messages (int): The number of messages to display.
+    - host (str): The host address of the server.
+    - port (int): The port number of the server.
+    - is_json (bool): Whether to use JSON or wire protocol for communication.
+
+    """
     def __init__(self):
         super().__init__()
         self.title("Chat App")
@@ -36,29 +53,58 @@ class App(tk.Tk):
         self.container.grid_columnconfigure(0, weight=1)
 
         # Connect to server and start read thread
-        connected = self.connect_to_server()
-        if connected:
-            threading.Thread(target=self.read_from_server, daemon=True).start()
+        threading.Thread(target=self.connect_to_server, daemon=True).start()
 
         self.frames = {}
         self.show_frame(Onboarding)
 
+
+    # CLIENT STATE MANAGEMENT FUNCTIONS
+
+    def run(self):
+        self.mainloop()
+
+
     def reset_state(self):
+        # reset state variables when users log out
         self.current_user = None
         self.messages = []
 
+    def show_frame(self, page):
+        """Shows frames of a selected page
+
+        Args:
+            page (tk.Frame): Selected frame to show
+        Notes:
+            - Destroys current frame and creates new frame
+        """
+        # Get current frame and stop its functions
+        current_frame = list(self.frames.values())[0] if self.frames else None
+        if current_frame:
+            current_frame.destroy()
+
+        # Create new frame
+        frame = page(self.container, self)
+        self.frames = {page: frame}
+        frame.grid(row=0, column=0, sticky="nsew")
+
+
+    # SERVER COMMUNICATION
+
     def connect_to_server(self):
-        try:
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.connect((self.host, self.port))
-            self.is_connected = True
-            print("Connected to server.")
-            return True
-        except Exception as e:
-            print("Failed to connect to server.")
-            print(e)
-            self.is_connected = False
-            return False
+        while not self.is_connected:
+            try:
+                self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.socket.connect((self.host, self.port))
+                self.is_connected = True
+                print("Connected to server.")
+                # Once connected, start read thread
+                self.after(500, lambda : threading.Thread(target=self.read_from_server, daemon=True).start() )
+
+                return True
+            except Exception as e:
+                print(f"Failed to connect to server: {e}")
+                time.sleep(5)
 
     def read_from_server(self):
         if self.is_json:
@@ -109,6 +155,7 @@ class App(tk.Tk):
             except Exception as e:
                 print("Error reading from server:", e)
                 self.is_connected = False
+                self.after(300, lambda :threading.Thread(target=self.connect_to_server, daemon=True).start())
                 break
 
     def handle_reads(self, server_message):
@@ -220,7 +267,6 @@ class App(tk.Tk):
             return False
 
     def write_to_server_json(self, message_dict):
-        print("Writing JSON to server:", message_dict)
         if not self.is_connected:
             print("Not connected to server")
             return False
@@ -264,14 +310,12 @@ class App(tk.Tk):
 
             except Exception as e:
                 print("Error reading from server:", e)
+                self.after(300, lambda :threading.Thread(target=self.connect_to_server, daemon=True).start())
                 self.is_connected = False
                 break
 
     def handle_reads_json(self, json_data):
-        print("Handling JSON:", json_data)
-
         request_type = json_data.get("type", "")
-        print("Request type:", request_type)
         match request_type:
             case "SET":
                 print("Sending message success")
@@ -282,7 +326,6 @@ class App(tk.Tk):
                     "timestamp": json_data["timestamp"],
                     "message": json_data["message"]
                 })
-                print("self.messages after update in SEL", self.messages)
                 # Update UI if MessageDisplay is current frame
                 current_frame = list(self.frames.values())[0] if self.frames else None
                 if current_frame and isinstance(current_frame, MessageDisplay):
@@ -320,20 +363,6 @@ class App(tk.Tk):
 
             case _:
                 print("Unknown message type:", request_type)
-
-    def show_frame(self, page):
-        # Get current frame and stop its functions
-        current_frame = list(self.frames.values())[0] if self.frames else None
-        if current_frame:
-            current_frame.destroy()
-
-        # Create new frame
-        frame = page(self.container, self)  # Note: removed state parameter
-        self.frames = {page: frame}  # Replace old frames dictionary
-        frame.grid(row=0, column=0, sticky="nsew")
-
-    def run(self):
-        self.mainloop()
 
 
 class Onboarding(tk.Frame):
@@ -746,7 +775,7 @@ class MessageDisplay(tk.Frame):
             message = {
                 "type": "DM",
                 "username": self.controller.current_user,
-                "messageId": message_id
+                "id": message_id
             }
         else:
             message = f"DM{self.controller.current_user} {message_id}"
