@@ -700,7 +700,8 @@ def service_connection_json(key, mask):
             sent = sock.sendall(return_data)
 
 if __name__ == "__main__":
-    HOST = os.environ.get("HOST_SERVER")
+    # server has 0.0.0.0 to listen on all interfaces
+    HOST = os.environ.get("SERVER_IP")
     PORT = int(os.environ.get("PORT_SERVER"))
     lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     lsock.bind((HOST, PORT))
