@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 import json
 
 load_dotenv()
-
+#
 class App(tk.Tk):
     """
     Main class for the chat app. Handles all UI and server communication.
