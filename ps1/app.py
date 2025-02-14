@@ -106,11 +106,13 @@ class App(tk.Tk):
                 print(f"Failed to connect to server: {e}")
                 time.sleep(5)
 
+    #
     def read_from_server(self):
         if self.is_json:
             self.read_from_server_json()
         else:
             self.read_from_server_wp()
+
 
     def write_to_server(self, message):
         if self.is_json:
@@ -118,7 +120,12 @@ class App(tk.Tk):
         else:
             return self.write_to_server_wp(message)
 
+
     def read_from_server_wp(self):
+        """Reads messages from the server using wire protocol
+        Notes:
+            - Reads messages from the server and calls handle_reads_wp to process them accordingly
+        """
         while self.is_connected:
             try:
                 str_bytes = ""
@@ -158,13 +165,33 @@ class App(tk.Tk):
                 self.after(300, lambda :threading.Thread(target=self.connect_to_server, daemon=True).start())
                 break
 
+
+    # functions to handle reads for wire protocol and json
     def handle_reads(self, server_message):
         if self.is_json:
             self.handle_reads_json(server_message)
         else:
             self.handle_reads_wp(server_message)
 
+
     def handle_reads_wp(self, server_message):
+        """Handles messages received from the server by processing them by our designated message types
+
+        Example: Server sends a message with type "SET" to indicate a successful message send
+        Server sends a sucessful login message with type "LIT", so user should be logged in, updating self.is_logged_in to True
+        Args:
+            server_message (string): A string containing the message from the server, with bytes to read as a prefix,
+            then a "type" key to indicate the type of message which is always a 3 letter code,
+            followed by whatever message the server wants to send to the client
+        Notes:
+            "SET" - Message sent successfully
+            "SEL" - Message received from another user while logged in
+            "LIT" - Login successful
+            "LOT" - Logout successful
+            "LAT" - List of accounts
+            "RET" - Retrieve messages
+            "DMT" - Delete message
+        """
         request_type = server_message[:3]
         data = server_message[3:]
 
@@ -252,7 +279,17 @@ class App(tk.Tk):
             case _:
                 print(server_message)
 
+
+    #
     def write_to_server_wp(self, message):
+        """Writes messages to the server using json
+
+        Args:
+            message_dict (string): Contains a message to send to the server
+
+        Returns:
+            boolean: True or false depending on if the message was sent successfully
+        """
         if not self.is_connected:
             print("Not connected to server")
             return False
@@ -267,6 +304,14 @@ class App(tk.Tk):
             return False
 
     def write_to_server_json(self, message_dict):
+        """Writes messages to the server using json
+
+        Args:
+            message_dict (dict): Contains a json message to send to the server
+
+        Returns:
+            boolean: True or false depending on if the message was sent successfully
+        """
         if not self.is_connected:
             print("Not connected to server")
             return False
@@ -280,6 +325,11 @@ class App(tk.Tk):
             return False
 
     def read_from_server_json(self):
+        """Reads messages from the server using json
+        Notes:
+            - Reads messages from the server, processing the bytes
+            and calls handle_reads_json to process them accordingly
+        """
         while self.is_connected:
             try:
                 str_bytes = ""
@@ -315,6 +365,24 @@ class App(tk.Tk):
                 break
 
     def handle_reads_json(self, json_data):
+        """Handles messages received from the server by processing them by our designated message types
+
+        Example: Server sends a message with type "SET" to indicate a successful message send
+        Server sends a sucessful login message with type "LIT", so user should be logged in, updating self.is_logged_in to True
+        Args:
+            json_data (dict): A dictionary containing the message from the server,
+            always containing a "type" key to indicate the type of message,
+            success messages contain a boolean whether what ever action was successful or not
+            and whatever message the server wants to send to the client
+        Notes:
+            "SET" - Message sent successfully
+            "SEL" - Message received from another user while logged in
+            "LIT" - Login successful
+            "LOT" - Logout successful
+            "LAT" - List of accounts
+            "RET" - Retrieve messages
+            "DMT" - Delete message
+        """
         request_type = json_data.get("type", "")
         match request_type:
             case "SET":
@@ -366,6 +434,14 @@ class App(tk.Tk):
 
 
 class Onboarding(tk.Frame):
+    """Class for the login/signup page
+
+    Args:
+        tk (tk.Frame):
+    Atributes:
+        - parent: The parent Tk.frame that called the frame
+        - controller: The controller object that is used to control the app
+    """
     def __init__(self, parent, controller):
         tk.Frame.__init__(self, parent)
         self.controller = controller
@@ -391,6 +467,8 @@ class Onboarding(tk.Frame):
 
         self.update_accounts()
 
+
+    # updates accounts on login page to ensure that users are updated correctly
     def update_accounts(self):
         if self.controller.is_json:
             self.controller.write_to_server_json({"type": "LA"})
@@ -398,22 +476,32 @@ class Onboarding(tk.Frame):
             self.controller.write_to_server("LA")
         self.after_id = self.after(1000, self.update_accounts)
 
+    # cleanup function to cancel any pending after calls
     def cleanup(self):
         if self.after_id:
             self.after_cancel(self.after_id)
             self.after_id = None
 
+    # leave to navigation page
     def leave_to_navigation(self):
         self.cleanup()
         self.controller.show_frame(Navigation)
 
-    # gpt
+    # gpt hash function
     def enhash(self, password):
+        # Takes in password, outputs hashed password
         # Simple shift of ASCII values and reversal
         shifted = ''.join(chr((ord(c) + 5) % 128) for c in password)
         return shifted[::-1]
 
+
+
     def handle_login(self):
+        """Handles the login process for the user
+        Notes:
+            - Checks if the username and password are valid
+            - If they are, the user is logged in and taken to the navigation page
+        """
         username = self.textbox_username.get()
         password = self.textbox_password.get()
         if not username or not password:
@@ -442,7 +530,9 @@ class Onboarding(tk.Frame):
         else:
             messagebox.showerror("Error", "Account does not exist.")
 
+    # checks if login was successful
     def check_login_success(self):
+        # Check the controller's is_logged_in variable
         if self.controller.is_logged_in is False:
             messagebox.showerror("Error", "Login failed. Please try again.")
         else:
@@ -451,7 +541,13 @@ class Onboarding(tk.Frame):
             self.textbox_password.delete(0, tk.END)
             self.leave_to_navigation()
 
+
     def handle_create_account(self):
+        """ Handles the account creation process for the user
+        Notes:
+            - Checks if the username and password are valid
+            - If they are, the user is created and logged in and taken to the navigation page
+        """
         username = self.textbox_username.get()
         password = self.textbox_password.get()
         if not username or not password:
@@ -496,6 +592,21 @@ class Onboarding(tk.Frame):
 
 
 class Navigation(tk.Frame):
+    """
+    Navigation page for the chat app
+
+    Notes:
+    - Contains buttons to navigate to different pages of the app
+    Chat, Onboarding, MessageDisplay, and SearchAccount
+    - Also contains buttons to logout and delete account
+
+    Args:
+        tk (tk.Frame): The parent Tk.frame that called the frame
+
+    Attributes:
+        - parent: The parent Tk.frame that called the frame
+        - controller: The controller object that is used to control the app
+    """
     def __init__(self, parent, controller):
         tk.Frame.__init__(self, parent)
         self.controller = controller
@@ -549,6 +660,7 @@ class Navigation(tk.Frame):
         )
         self.delete_account_btn.pack(pady=20)
 
+    # Delete account by sending message to server as well as updating the state
     def on_delete_account(self):
         if self.controller.is_json:
             message_to_write = {
@@ -561,6 +673,8 @@ class Navigation(tk.Frame):
             self.controller.reset_state()
             self.controller.show_frame(Onboarding)
 
+
+    # Logout by sending message to server as well as updating the state
     def handle_logout(self):
         if self.controller.is_json:
             message_to_write = {
@@ -575,12 +689,27 @@ class Navigation(tk.Frame):
             self.controller.show_frame(Onboarding)
 
 class Chat(tk.Frame):
+    """
+    Frame for sending messages to other users
+
+    Notes:
+    - Contains a search bar to search for users to send messages to
+    - Contains a text box to enter messages, and a button to send on click
+
+    Args:
+        tk (tk.Frame): The parent Tk.frame that called the frame
+
+    Attributes:
+        - parent: The parent Tk.frame that called the frame
+        - controller: The controller object that is used to control the app
+    """
     def __init__(self, parent, controller):
         tk.Frame.__init__(self, parent)
         self.controller = controller
 
         self.grid_columnconfigure(1, weight=1)
 
+        # UI setup
         self.back_button = tk.Button(
             self,
             text="Back to Navigation",
@@ -610,10 +739,12 @@ class Chat(tk.Frame):
 
         self.update_accounts()
 
+    #
     def back_to_navigation(self):
         self.after_cancel(self.after_id)
         self.controller.show_frame(Navigation)
 
+    # update accounts to ensure that the user is up to date
     def update_accounts(self):
         if self.controller.is_json:
             self.controller.write_to_server_json({"type": "LA"})
@@ -621,6 +752,8 @@ class Chat(tk.Frame):
             self.controller.write_to_server("LA")
         self.after_id = self.after(500, self.update_accounts)
 
+
+    # Handle sending messages
     def on_button_click(self):
         username = self.username_textbox.get()
         message = self.entry_textbox.get()
@@ -653,6 +786,20 @@ class Chat(tk.Frame):
             self.status_label.config(text="Failed to send message.", fg="red")
 
 class MessageDisplay(tk.Frame):
+    """
+    Page to display messages received frame
+
+    Notes:
+    - Contains a search bar to search for users to send messages to
+    - Contains a text box to enter messages, and a button to send on click
+
+    Args:
+        tk (tk.Frame): The parent Tk.frame that called the frame
+
+    Attributes:
+        - parent: The parent Tk.frame that called the frame
+        - controller: The controller object that is used to control the app
+    """
     def __init__(self, parent, controller):
         tk.Frame.__init__(self, parent)
         self.controller = controller
@@ -672,7 +819,7 @@ class MessageDisplay(tk.Frame):
         self.refresh_display()
 
     def _setup_ui(self):
-        """Setup all UI elements"""
+        """Setup all UI elements for the message display page"""
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 
