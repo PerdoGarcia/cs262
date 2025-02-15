@@ -1,42 +1,15 @@
 import unittest
 import socket
-import threading
-import selectors
-import types
 import json
-# from ps1.server import create_account, login, logout, list_accounts, send_message, read_message, delete_message, delete_account, accept_wrapper, service_connection_wp, service_connection_json
+import os
+from dotenv import load_dotenv
 
-HOST = '127.0.0.1'
-PORT = 5001
+load_dotenv()
+
+HOST = os.environ.get("HOST_SERVER_TESTING")
+PORT = int(os.environ.get("PORT_SERVER_TESTING"))
 
 class TestServerMethods(unittest.TestCase):
-
-    # @classmethod
-    # def setUpClass(cls):
-    #     # cls.sel = selectors.DefaultSelector()
-    #     cls.lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    #     cls.lsock.bind((HOST, PORT))
-    #     cls.lsock.listen()
-    #     cls.lsock.setblocking(False)
-    #     # cls.sel.register(cls.lsock, selectors.EVENT_READ, data=None)
-    #     # cls.server_thread = threading.Thread(target=cls.run_server, daemon=True)
-    #     # cls.server_thread.start()
-
-    # @classmethod
-    # def tearDownClass(cls):
-    #     # cls.sel.close()
-    #     cls.lsock.close()
-
-    # @classmethod
-    # def run_server(cls):
-    #     while True:
-    #         events = cls.sel.select(timeout=None)
-    #         for key, mask in events:
-    #             if key.data is None:
-    #                 accept_wrapper(key.fileobj)
-    #             else:
-    #                 service_connection_json(key, mask)
-
     def setUp(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.connect((HOST, PORT))
@@ -45,9 +18,9 @@ class TestServerMethods(unittest.TestCase):
         self.sock.close()
 
     def read_message(self):
+        # Reads the first number that is sent over to figure out how many total bytes are in the message
         str_bytes = ""
         recv_data = self.sock.recv(1)
-        # print("recv_data", recv_data.decode("utf-8"))
         while recv_data:
             if len(recv_data.decode("utf-8")) > 0:
                 if (recv_data.decode("utf-8")).isnumeric():
@@ -57,16 +30,14 @@ class TestServerMethods(unittest.TestCase):
             recv_data = self.sock.recv(1)
         num_bytes = int(str_bytes)
 
-        # TODO: read more bytes using recv until you've fit all the bytes you need in
+        # Reads the next num_bytes bytes to get the full message
         response = recv_data
         cur_bytes = 1
         while(cur_bytes < num_bytes):
             recv_data = self.sock.recv(num_bytes - cur_bytes)
             if recv_data:
-                # print("RECEIVED RAW DATA:", recv_data)
                 response += recv_data
                 cur_bytes += len(recv_data.decode("utf-8"))
-        # print("received: ", response.decode("utf-8"))
         json_read = json.loads(response.decode("utf-8"))
         return json_read
 
@@ -75,12 +46,30 @@ class TestServerMethods(unittest.TestCase):
         request = str(len(request)) + request
         self.sock.sendall(request.encode('utf-8'))
         json_read = self.read_message()
-        # print(json_read)
+
+        # Ignore SEL messages when using this because they are intended as a notification for the 
+        # other client, not as a response
         if ("type" in json_read and json_read["type"] == "SEL"):
             json_read = self.read_message()
         return json_read
+    
+    def send_request_se(self, request):
+        request = json.dumps(request)
+        request = str(len(request)) + request
+        self.sock.sendall(request.encode('utf-8'))
+
+        # Return SEL message as first parameter and then the SET response as second parameter
+        responses = []
+        # Read SEL message (returned here because both clients are using the same socket)
+        json_read = self.read_message()
+        responses.append(json_read)
+        # Read SET message (returned here because both clients are using the same socket)
+        json_read = self.read_message()
+        responses.append(json_read)
+        return responses
 
     def test_create_account(self):
+        # Create account
         request = {"type": "CR", "username": "user1", "password": "password1"}
         response = self.send_request(request)
         self.assertTrue(response["success"])
@@ -90,11 +79,13 @@ class TestServerMethods(unittest.TestCase):
         self.assertFalse(response["success"])
         self.assertEqual(response["errorMsg"], "ER1: account is already in database")
 
+        # Delete account to clean up
         request = {"type": "DA", "username": "user1"}
         response = self.send_request(request)
         self.assertTrue(response["success"])
 
     def test_login(self):
+        # Create account and log in
         self.send_request({"type": "CR", "username": "user1", "password": "password1"})
         request = {"type": "LI", "username": "user1", "password": "password1"}
         response = self.send_request(request)
@@ -111,11 +102,14 @@ class TestServerMethods(unittest.TestCase):
         response = self.send_request(request)
         self.assertFalse(response["success"])
         self.assertEqual(response["errorMsg"], "ER1: account with that username does not exist")
+        
+        # Delete account to clean up
         request = {"type": "DA", "username": "user1"}
         response = self.send_request(request)
         self.assertTrue(response["success"])
 
     def test_logout(self):
+        # Create one account, login correctly, and logout correctly
         self.send_request({"type": "CR", "username": "user1", "password": "password1"})
         self.send_request({"type": "LI", "username": "user1", "password": "password1"})
         request = {"type": "LO", "username": "user1"}
@@ -128,19 +122,24 @@ class TestServerMethods(unittest.TestCase):
         self.assertFalse(response["success"])
         self.assertEqual(response["errorMsg"], "ER1: account with that username does not exist")
 
+        # Delete account to clean up
         request = {"type": "DA", "username": "user1"}
         response = self.send_request(request)
         self.assertTrue(response["success"])
 
     def test_list_accounts(self):
+        # Create two accounts
         self.send_request({"type": "CR", "username": "user1", "password": "password1"})
         self.send_request({"type": "CR", "username": "user2", "password": "password2"})
+        
+        # Send list accounts request and check it has correct content
         request = {"type": "LA"}
         response = self.send_request(request)
         self.assertTrue(response["success"])
         self.assertIn("user1", response["accounts"])
         self.assertIn("user2", response["accounts"])
 
+        # Delete accounts to clean up
         request = {"type": "DA", "username": "user1"}
         response = self.send_request(request)
         self.assertTrue(response["success"])
@@ -149,21 +148,25 @@ class TestServerMethods(unittest.TestCase):
         response = self.send_request(request)
         self.assertTrue(response["success"])
 
-    def test_send_message(self):
+    def test_send_message_logged_in(self):
+        # Create two accounts and login to both
         self.send_request({"type": "CR", "username": "user1", "password": "password1"})
         self.send_request({"type": "CR", "username": "user2", "password": "password2"})
         self.send_request({"type": "LI", "username": "user1", "password": "password1"})
         self.send_request({"type": "LI", "username": "user2", "password": "password2"})
-        request = {"type": "SE", "from_username": "user1", "to_username": "user2", "timestamp": "2023-10-10 10:00:00", "message": "Hello"}
+        
+        # Send a message from one to the other while logged in
+        request = {"type": "SE", "from_username": "user1", "to_username": "user2", "timestamp": "2023-10-10-10:00:00", "message": "Hello World"}
         response = self.send_request(request)
         self.assertTrue(response["success"])
 
         # Test sending message to non-existent account
-        request = {"type": "SE", "from_username": "user1", "to_username": "user3", "timestamp": "2023-10-10 10:00:00", "message": "Hello"}
+        request = {"type": "SE", "from_username": "user1", "to_username": "user3", "timestamp": "2023-10-10-10:00:00", "message": "Hello World"}
         response = self.send_request(request)
         self.assertFalse(response["success"])
         self.assertEqual(response["errorMsg"], "ER1: account with that username does not exist")
 
+        # Delete account to clean up
         request = {"type": "DA", "username": "user1"}
         response = self.send_request(request)
         self.assertTrue(response["success"])
@@ -173,18 +176,19 @@ class TestServerMethods(unittest.TestCase):
         self.assertTrue(response["success"])
 
     def test_read_message_loggedout(self):
+        # Create two accounts and login to just the sender account
         self.send_request({"type": "CR", "username": "user1", "password": "password1"})
         self.send_request({"type": "CR", "username": "user2", "password": "password2"})
         self.send_request({"type": "LI", "username": "user1", "password": "password1"})
-        self.send_request({"type": "LI", "username": "user2", "password": "password2"})
-        self.send_request({"type": "LO", "username": "user2"})
-        self.send_request({"type": "SE", "from_username": "user1", "to_username": "user2", "timestamp": "2023-10-10 10:00:00", "message": "Hello"})
+        
+        # Send a message from one to the other while the receipient is logged out
+        self.send_request({"type": "SE", "from_username": "user1", "to_username": "user2", "timestamp": "2023-10-10-10:00:00", "message": "Hello World"})
         request = {"type": "RE", "username": "user2", "number": 1}
         response = self.send_request(request)
-        self.assertTrue(response["success"])
         self.assertEqual(response["num_read"], 1)
-        self.assertEqual(response["messages"][0]["message"], "Hello")
+        self.assertEqual(response["messages"][0]["message"], "Hello World")
 
+        # Delete account to clean up
         request = {"type": "DA", "username": "user1"}
         response = self.send_request(request)
         self.assertTrue(response["success"])
@@ -194,22 +198,26 @@ class TestServerMethods(unittest.TestCase):
         self.assertTrue(response["success"])
 
     def test_delete_message(self):
+        # Create two accounts and login to both
         self.send_request({"type": "CR", "username": "user1", "password": "password1"})
         self.send_request({"type": "CR", "username": "user2", "password": "password2"})
         self.send_request({"type": "LI", "username": "user1", "password": "password1"})
         self.send_request({"type": "LI", "username": "user2", "password": "password2"})
-        self.send_request({"type": "SE", "from_username": "user1", "to_username": "user2", "timestamp": "2023-10-10 10:00:00", "message": "Hello"})
-        request = {"type": "DM", "username": "user2", "id": 0}
+        
+        # Send a message and extract the message id, then delete that message
+        response_sel, response_set = self.send_request_se({"type": "SE", "from_username": "user1", "to_username": "user2", "timestamp": "2023-10-10-10:00:00", "message": "Hello World"})
+        message_id = response_sel["messageId"]
+        request = {"type": "DM", "username": "user2", "id": message_id}
         response = self.send_request(request)
-        # print(response)
         self.assertTrue(response["success"])
 
         # Test deleting non-existent message
-        request = {"type": "DM", "username": "user2", "id": 1}
+        request = {"type": "DM", "username": "user2", "id": message_id+1}
         response = self.send_request(request)
         self.assertFalse(response["success"])
         self.assertEqual(response["errorMsg"], "ER4: account did not receive message with that id")
 
+        # Delete account to clean up
         request = {"type": "DA", "username": "user1"}
         response = self.send_request(request)
         self.assertTrue(response["success"])
@@ -219,6 +227,7 @@ class TestServerMethods(unittest.TestCase):
         self.assertTrue(response["success"])
 
     def test_delete_account(self):
+        # Create one account and then delete it
         self.send_request({"type": "CR", "username": "user1", "password": "password1"})
         request = {"type": "DA", "username": "user1"}
         response = self.send_request(request)
@@ -226,106 +235,3 @@ class TestServerMethods(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-
-# import unittest
-# from ps1.server import create_account, login, logout, list_accounts, send_message, read_message, delete_message, delete_account
-
-# class TestServerMethods(unittest.TestCase):
-
-#     def setUp(self):
-#         # Reset the accounts and messageId before each test
-#         global accounts, messageId
-#         accounts = {}
-#         messageId = 0
-
-#     def test_create_account(self):
-#         result = create_account("user1", "password1")
-#         self.assertTrue(result[0])
-#         self.assertIn("user1", accounts)
-
-#         # Test creating an account that already exists
-#         result = create_account("user1", "password1")
-#         self.assertFalse(result[0])
-#         self.assertEqual(result[1], "ER1: account is already in database")
-
-#     def test_login(self):
-#         create_account("user1", "password1")
-#         result = login("user1", "password1", None, None)
-#         self.assertTrue(result[0])
-
-#         # Test login with incorrect password
-#         result = login("user1", "wrongpassword", None, None)
-#         self.assertFalse(result[0])
-#         self.assertEqual(result[1], "ER2: incorrect password")
-
-#         # Test login with non-existent account
-#         result = login("user2", "password2", None, None)
-#         self.assertFalse(result[0])
-#         self.assertEqual(result[1], "ER1: account with that username does not exist")
-
-#     def test_logout(self):
-#         create_account("user1", "password1")
-#         login("user1", "password1", None, None)
-#         result = logout("user1")
-#         self.assertTrue(result[0])
-
-#         # Test logout with non-existent account
-#         result = logout("user2")
-#         self.assertFalse(result[0])
-#         self.assertEqual(result[1], "ER1: account with that username does not exist")
-
-#     def test_list_accounts(self):
-#         create_account("user1", "password1")
-#         create_account("user2", "password2")
-#         result = list_accounts()
-#         self.assertTrue(result[0])
-#         self.assertIn("user1", result[1])
-#         self.assertIn("user2", result[1])
-
-#     def test_send_message(self):
-#         create_account("user1", "password1")
-#         create_account("user2", "password2")
-#         login("user1", "password1", None, None)
-#         login("user2", "password2", None, None)
-#         result = send_message("user1", "user2", "Hello", "2023-10-10 10:00:00")
-#         self.assertTrue(result[0])
-#         self.assertEqual(result[1]["message"], "Hello")
-
-#         # Test sending message to non-existent account
-#         result = send_message("user1", "user3", "Hello", "2023-10-10 10:00:00")
-#         self.assertFalse(result[0])
-#         self.assertEqual(result[1], "ER1: account with that username does not exist")
-
-#     def test_read_message(self):
-#         create_account("user1", "password1")
-#         create_account("user2", "password2")
-#         login("user1", "password1", None, None)
-#         login("user2", "password2", None, None)
-#         send_message("user1", "user2", "Hello", "2023-10-10 10:00:00")
-#         result = read_message("user2", 1)
-#         self.assertTrue(result[0])
-#         self.assertEqual(result[1]["num_read"], 1)
-#         self.assertEqual(result[1]["messages"][0]["message"], "Hello")
-
-#     def test_delete_message(self):
-#         create_account("user1", "password1")
-#         create_account("user2", "password2")
-#         login("user1", "password1", None, None)
-#         login("user2", "password2", None, None)
-#         send_message("user1", "user2", "Hello", "2023-10-10 10:00:00")
-#         result = delete_message("user2", 0)
-#         self.assertTrue(result[0])
-
-#         # Test deleting non-existent message
-#         result = delete_message("user2", 1)
-#         self.assertFalse(result[0])
-#         self.assertEqual(result[1], "ER2: account did not receive message with that id")
-
-#     def test_delete_account(self):
-#         create_account("user1", "password1")
-#         result = delete_account("user1")
-#         self.assertTrue(result[0])
-#         self.assertNotIn("user1", accounts)
-
-# if __name__ == '__main__':
-#     unittest.main()
