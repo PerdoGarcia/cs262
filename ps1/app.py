@@ -89,24 +89,24 @@ class App(tk.Tk):
         frame.grid(row=0, column=0, sticky="nsew")
 
 
-    # SERVER COMMUNICATION
-
     def connect_to_server(self):
+        print(f"Client attempting to connect to HOST={self.host}, PORT={self.port}")
+
         while not self.is_connected:
             try:
+                print(f"Attempting to connect to {self.host}:{self.port}")
                 self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.socket.connect((self.host, self.port))
                 self.is_connected = True
                 print("Connected to server.")
                 # Once connected, start read thread
-                self.after(500, lambda : threading.Thread(target=self.read_from_server, daemon=True).start() )
-
+                self.after(500, lambda: threading.Thread(target=self.read_from_server, daemon=True).start())
                 return True
             except Exception as e:
                 print(f"Failed to connect to server: {e}")
-                time.sleep(5)
+                print(f"Current host: {self.host}, port: {self.port}")
+                time.sleep(1)
 
-    #
     def read_from_server(self):
         if self.is_json:
             self.read_from_server_json()

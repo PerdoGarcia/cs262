@@ -558,7 +558,7 @@ def service_connection_json(key, mask):
                     message = in_data_json["message"]
 
                     call_info = send_message(from_username, to_username, message, time)
-        
+
                     # If the receiver is logged on, we send a special message to their socket
                     # This facilitates instantaneous delivery
                     if call_info[0] == True:
@@ -639,9 +639,9 @@ if __name__ == "__main__":
                     accept_wrapper(key.fileobj)
                 else:
                     # Version that understands the wire protocol
-                    service_connection_wp(key, mask)
+                    # service_connection_wp(key, mask)
                     # Version that understands json
-                    # service_connection_json(key, mask)
+                    service_connection_json(key, mask)
     except KeyboardInterrupt:
         print("Caught keyboard interrupt, exiting")
     finally:
