@@ -1,3 +1,4 @@
+syntax = "proto2";
 // The greeting service definition.
 service MessageServer {
     // Attempts to create a new account

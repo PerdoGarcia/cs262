@@ -6,614 +6,448 @@ import types
 import os
 from dotenv import load_dotenv
 import json
+import grpc
+import message_server_pb2
+import message_server_pb2_grpc
+from concurrent import futures
+import logging
 
 sel = selectors.DefaultSelector()
 
 load_dotenv()
 
-# Global variables that keep track of user accounts and unique message ids, respectively
-accounts = {}
-messageId = 0
+class MessageServer(rpc.MessageServerServicer):
+    # Global variables that keep track of user accounts and unique message ids, respectively
+    def __init__(self):
+        self.accounts = {}
+        self.messageId = 0
 
-# HELPERS FOR SERVER ACTIONS
-def create_account(username, password):
-    """
-    Attempts to create an account with the given username and password
+    # HELPERS FOR SERVER ACTIONS
+    def create_account(self, username, password):
+        """
+        Attempts to create an account with the given username and password
 
-    Parameters
-    ----------
-    username : str
-        The desired username of the account
-    password : str
-        The desired password of the account
+        Parameters
+        ----------
+        username : str
+            The desired username of the account
+        password : str
+            The desired password of the account
 
-    Returns
-    -------
-    list
-        list[0] is True or False, and indicates if the account was created successfully
-        list[1] is an empty string on success and an error message on failure
-    """
-    print("Trying to create account for ", username)
-    if username not in accounts:
-        accounts[username] = {"socket": None, "loggedIn": False, "accountInfo": {"username": username, "password": password}, "messageHistory": []}
-        return [True, ""]
-    else:
-        # error: account is already in the database
-        return [False, "ER1: account is already in database"]
-
-def login(username, password, sock):
-    """
-    Attempts to log a user in with the given username and password
-
-    Parameters
-    ----------
-    username : str
-        The inputted username of the account
-    password : str
-        The inputted password of the account
-    sock : socket
-        The socket the user is sending the request to log in from
-
-    Returns
-    -------
-    list
-        list[0] is True or False, and indicates if the user logged in successfully
-        list[1] is an empty string on success and an error message on failure
-
-    Notes
-    -----
-    Attempting to login to the same account twice does not produce an error.
-    The second login attempt will return success, and the user will remain logged in.
-    """
-    print("Trying to login ", username)
-    if username not in accounts:
-        # error: account with that username does not exist
-        return [False, "ER1: account with that username does not exist"]
-    else:
-        if accounts[username]["accountInfo"]["username"] == username and accounts[username]["accountInfo"]["password"] == password:
-            # If you try to login twice for some reason nothing happens
-            accounts[username]["loggedIn"] = True
-            # Bind user to a certain socket on login
-            accounts[username]["socket"] = sock
+        Returns
+        -------
+        list
+            list[0] is True or False, and indicates if the account was created successfully
+            list[1] is an empty string on success and an error message on failure
+        """
+        print("Trying to create account for ", username)
+        if username not in self.accounts:
+            self. accounts[username] = {"socket": None, "loggedIn": False, "accountInfo": {"username": username, "password": password}, "messageHistory": []}
             return [True, ""]
         else:
-            # error: incorrect password
-            return [False, "ER2: incorrect password"]
+            # error: account is already in the database
+            return [False, "ER1: account is already in database"]
 
-def logout(username):
-    """
-    Attempts to logout a user in with the given username and password
+    def login(self, username, password, sock):
+        """
+        Attempts to log a user in with the given username and password
 
-    Parameters
-    ----------
-    username : str
-        The inputted username of the account to logout of
+        Parameters
+        ----------
+        username : str
+            The inputted username of the account
+        password : str
+            The inputted password of the account
+        sock : socket
+            The socket the user is sending the request to log in from
 
-    Returns
-    -------
-    list
-        list[0] is True or False, and indicates if the user logged out successfully
-        list[1] is an empty string on success and an error message on failure
+        Returns
+        -------
+        list
+            list[0] is True or False, and indicates if the user logged in successfully
+            list[1] is an empty string on success and an error message on failure
 
-    Notes
-    -----
-    Attempting to logout of the same account twice does not produce an error.
-    The second logout attempt will return success, and the user will remain logged out.
-    """
-    print("Trying to logout ", username)
-    if username not in accounts:
-        # error: account with that username does not exist
-        return [False, "ER1: account with that username does not exist"]
-    else:
-        # If you try to logout twice for some reason nothing happens
-        accounts[username]["loggedIn"] = False
-        # Remove user from a socket at logout
-        accounts[username]["socket"] = None
-        return [True, ""]
+        Notes
+        -----
+        Attempting to login to the same account twice does not produce an error.
+        The second login attempt will return success, and the user will remain logged in.
+        """
+        print("Trying to login ", username)
+        if username not in self.accounts:
+            # error: account with that username does not exist
+            return [False, "ER1: account with that username does not exist"]
+        else:
+            if self.accounts[username]["accountInfo"]["username"] == username and self.accounts[username]["accountInfo"]["password"] == password:
+                # If you try to login twice for some reason nothing happens
+                self.accounts[username]["loggedIn"] = True
+                # Bind user to a certain socket on login
+                self.accounts[username]["socket"] = sock
+                return [True, ""]
+            else:
+                # error: incorrect password
+                return [False, "ER2: incorrect password"]
 
-def list_accounts():
-    """
-    Attempts to logout a user in with the given username and password
+    def logout(self, username):
+        """
+        Attempts to logout a user in with the given username and password
 
-    Parameters
-    ----------
-    None.
+        Parameters
+        ----------
+        username : str
+            The inputted username of the account to logout of
 
-    Returns
-    -------
-    list
-        list[0] is always True. This function cannot fail.
-        list[1] is a list of all account names stored by the server.
-    """
-    # Simply return all the accounts, searching for a subset is done on client-side
-    accountNames = list(accounts.keys())
-    return [True, accountNames]
+        Returns
+        -------
+        list
+            list[0] is True or False, and indicates if the user logged out successfully
+            list[1] is an empty string on success and an error message on failure
 
-
-def send_message(from_username, to_username, message, time):
-    """
-    Attempts to send a message from one user to another. If the receiving user is logged in, the message
-    is marked as delivered instantly. Otherwise, it is marked as undelivered.
-
-    Parameters
-    ----------
-    from_username: str
-        The username of the account sending the message
-    to_username: str
-        The username of the account receiving the message
-    message: str
-        The message text
-    time:
-        A string representing the string to be sent
-
-    Returns
-    -------
-    list
-        list[0] is always True. This function cannot fail.
-        list[1] is dictionary containing the the information that is now stored in the server about the
-        message that was sent. This dictionary has the following keys: sender, timestamp, message, messageId,
-        and delivered.
-    """
-    print("Sending message from ", from_username, " to ", to_username)
-    global messageId
-    if to_username not in accounts:
-        return [False, "ER1: account with that username does not exist"]
-
-    if accounts[to_username]["loggedIn"] == True:
-        # If user is logged in, the message is marked as delivered instantly
-        message_dict = {"sender": from_username, "timestamp": time, "message": message, "messageId": messageId, "delivered": True}
-        accounts[to_username]["messageHistory"].append(message_dict)
-    else:
-        # If the receiving user is logged out, add the message to their list of messages
-        message_dict = {"sender": from_username, "timestamp": time, "message": message, "messageId": messageId, "delivered": False}
-        accounts[to_username]["messageHistory"].append(message_dict)
-    # Each time a message is sent the messageId counter goes up
-    messageId += 1
-    return [True, message_dict]
-
-def read_message(username, num):
-    """
-    Attempts to send a message from one user to another. If the receiving user is logged in, the message
-    is marked as delivered instantly. Otherwise, it is marked as undelivered.
-
-    Parameters
-    ----------
-    username: str
-        The username of the account requesting to read messages
-    num: int
-        The number of messages requested
-
-    Returns
-    -------
-    list
-        list[0] is always True. This function cannot fail.
-        list[1] is dictionary containing two pieces of data.
-        list[1]["num_read"] is the number of messages read, which may be less than num if the user
-        had less than num undelivered messages.
-        list[1]["messages"] is a list of dictionaries containint information about the messages that were read.
-        Each message has the following keys: sender, timestamp, message, messageId, and delivered.
-    """
-    print("Reading ", num, " messages for ", username)
-    # Go through message array for a user and append undelivered messages
-    num_read = 0
-    returned_messages = []
-    for message in accounts[username]["messageHistory"]:
-        if message["delivered"] == False:
-            returned_messages.append(message)
-            num_read += 1
-            if num_read == num:
-                break
-
-    return [True, {"num_read": num_read, "messages": returned_messages}]
-
-def delete_message(username, id):
-    """
-    Attempts to delete a message with a specific ID from a user's list of messages.
-
-    Parameters
-    ----------
-    username: str
-        The username of the account requesting to delete the message
-    id: int
-        The ID of the message to delete
-
-    Returns
-    -------
-    list
-        list[0] is True or False, and indicates if the user deleted the requested message successfully
-        list[1] is an empty string on success and an error message on failure
-    """
-    print("Deleting message", id, "from", username)
-    if username not in accounts:
-        return [False, "ER3: attempting to delete a message from an account that does not exist"]
-
-    message_id = int(id)
-    for i in range(len(accounts[username]["messageHistory"])):
-        if accounts[username]["messageHistory"][i]["messageId"] == message_id:
-            del accounts[username]["messageHistory"][i]
+        Notes
+        -----
+        Attempting to logout of the same account twice does not produce an error.
+        The second logout attempt will return success, and the user will remain logged out.
+        """
+        print("Trying to logout ", username)
+        if username not in self.accounts:
+            # error: account with that username does not exist
+            return [False, "ER1: account with that username does not exist"]
+        else:
+            # If you try to logout twice for some reason nothing happens
+            self.accounts[username]["loggedIn"] = False
+            # Remove user from a socket at logout
+            self.accounts[username]["socket"] = None
             return [True, ""]
-    return [False, "ER4: account did not receive message with that id"]
 
-def delete_account(username):
-    """
-    Deletes a account with the given username.
+    def list_accounts(self):
+        """
+        Attempts to logout a user in with the given username and password
 
-    Parameters
-    ----------
-    username: str
-        The username of the account to delete
+        Parameters
+        ----------
+        None.
 
-    Returns
-    -------
-    list
-        list[0] is True or False, and indicates if the user deleted the requested account successfully
-        list[1] is an empty string on success and an error message on failure
-    """
-    print("Deleting account ", username)
-    if username not in accounts:
-        return [False, "ER1: attempting to delete an account that does not exist"]
-    else:
-        del accounts[username]
-        return [True, ""]
+        Returns
+        -------
+        list
+            list[0] is always True. This function cannot fail.
+            list[1] is a list of all account names stored by the server.
+        """
+        # Simply return all the accounts, searching for a subset is done on client-side
+        accountNames = list(self.accounts.keys())
+        return [True, accountNames]
 
 
-# HELPERS FOR DEALING WITH SOCKETS
-def accept_wrapper(sock):
-    """
-    Accepts a new connection from a client.
+    def send_message(self, from_username, to_username, message, time):
+        """
+        Attempts to send a message from one user to another. If the receiving user is logged in, the message
+        is marked as delivered instantly. Otherwise, it is marked as undelivered.
 
-    Parameters
-    ----------
-    sock: socket
-        The socket of the request comes from.
+        Parameters
+        ----------
+        from_username: str
+            The username of the account sending the message
+        to_username: str
+            The username of the account receiving the message
+        message: str
+            The message text
+        time:
+            A string representing the string to be sent
 
-    Returns
-    -------
-    None.
-    """
-    conn, addr = sock.accept()
-    print(f"Accepted connection from {addr}")
-    conn.setblocking(False)
-    data = types.SimpleNamespace(addr=addr, inb=b"", outb=b"", user=b"")
-    events = selectors.EVENT_READ | selectors.EVENT_WRITE
-    sel.register(conn, events, data=data)
+        Returns
+        -------
+        list
+            list[0] is always True. This function cannot fail.
+            list[1] is dictionary containing the the information that is now stored in the server about the
+            message that was sent. This dictionary has the following keys: sender, timestamp, message, messageId,
+            and delivered.
+        """
+        print("Sending message from ", from_username, " to ", to_username)
+        global messageId
+        if to_username not in self.accounts:
+            return [False, "ER1: account with that username does not exist"]
 
-# WIRE PROTOCOL VERSION
-def service_connection_wp(key, mask):
-    """
-    Services a connection from a client using a custom wire protocol.
-
-    Parameters
-    ----------
-    key: namedtuple
-    mask: selectors.EVENT_READ / selectors.EVENT_WRITE
-
-    Returns
-    -------
-    None.
-
-    Notes
-    -----
-    This version understand the custom wire protocol.
-    Though this function does not return, the server will always send some kind of response to the client.
-    In the case where a send message request is made, and the receiving user is logged in, the server will
-    send an additional message to the receiving user's socket with the new message information.
-    """
-    sock = key.fileobj
-    data = key.data
-    if mask & selectors.EVENT_READ:
-        # Reads the first number that is sent over to figure out how many total bytes are in the message
-        str_bytes = ""
-        recv_data = sock.recv(1)
-        while recv_data:
-            if len(recv_data.decode("utf-8")) > 0:
-                if (recv_data.decode("utf-8")).isnumeric():
-                    str_bytes += recv_data.decode("utf-8")
-                else:
-                    break
-            recv_data = sock.recv(1)
-        if not recv_data:
-            print(f"Closing connection to {data.addr}")
-            sel.unregister(sock)
-            sock.close()
+        if self.accounts[to_username]["loggedIn"] == True:
+            # If user is logged in, the message is marked as delivered instantly
+            message_dict = {"sender": from_username, "timestamp": time, "message": message, "messageId": messageId, "delivered": True}
+            self.accounts[to_username]["messageHistory"].append(message_dict)
         else:
-            num_bytes = int(str_bytes)
+            # If the receiving user is logged out, add the message to their list of messages
+            message_dict = {"sender": from_username, "timestamp": time, "message": message, "messageId": messageId, "delivered": False}
+            self.accounts[to_username]["messageHistory"].append(message_dict)
+        # Each time a message is sent the messageId counter goes up
+        messageId += 1
+        return [True, message_dict]
 
-            # Reads the next num_bytes bytes to get the full message
-            data.outb += recv_data
-            cur_bytes = 1
-            while(cur_bytes < num_bytes):
-                recv_data = sock.recv(num_bytes - cur_bytes)
-                if recv_data:
-                    data.outb += recv_data
-                    cur_bytes += len(recv_data.decode("utf-8"))
-                else:
-                    print(f"Closing connection to {data.addr}")
-                    sel.unregister(sock)
-                    sock.close()
+    def read_message(self, username, num):
+        """
+        Attempts to send a message from one user to another. If the receiving user is logged in, the message
+        is marked as delivered instantly. Otherwise, it is marked as undelivered.
 
-    if mask & selectors.EVENT_WRITE:
-        if not data.outb:
-            return
-        if data.outb:
-            in_data = data.outb.decode("utf-8")
-            # Flush out the input data from the buffer so that things remain synced
-            data.outb = data.outb[len(in_data):]
-            # Get 2 letter request type code
-            request_type = in_data[:2]
-            # The rest of the sent over data is the data needed to complete the request
-            in_data = in_data[2:]
+        Parameters
+        ----------
+        username: str
+            The username of the account requesting to read messages
+        num: int
+            The number of messages requested
 
-            # Reserve error code ER0 for unknown request type
-            return_data = "ER0"
-            match request_type:
-                case "CR":
-                    # create account
-                    username, password = in_data.split(" ")
-                    call_info = create_account(username, password)
-                    if call_info[0] == True:
-                        return_data = "CRT"
-                    else:
-                        # Pull just the error code out when we are using custom wire protocol
-                        return_data = call_info[1][:3]
-
-                case "LI":
-                    # login
-                    username, password = in_data.split(" ")
-                    call_info = login(username, password, sock)
-                    if call_info[0] == True:
-                        return_data = "LIT"
-                    else:
-                        # Pull just the error code out when we are using custom wire protocol
-                        return_data = call_info[1][:3]
-
-                case "LO":
-                    # logout
-                    username = in_data
-                    call_info = logout(username)
-                    if call_info[0] == True:
-                        return_data = "LOT"
-                    else:
-                        # Pull just the error code out when we are using custom wire protocol
-                        return_data = call_info[1][:3]
-
-                case "LA":
-                    # list accounts
-                    acct_names = list_accounts()[1]
-                    return_data = "LAT" + " ".join(acct_names)
-
-                case "SE":
-                    # send message
-                    in_data_array = in_data.split(" ")
-                    from_username = in_data_array[0]
-                    to_username = in_data_array[1]
-                    time = in_data_array[2]
-                    message = " ".join(in_data_array[3:])
-                    call_info = send_message(from_username, to_username, message, time)
-
-                    if call_info[0] == True:
-                        return_data = "SET"
-                        # If the receiver is logged on, we send a special message to their socket
-                        # This facilitates instantaneous delivery
-                        if accounts[to_username]["loggedIn"] == True:
-                            to_sock = accounts[to_username]["socket"]
-                            message_dict = call_info[1]
-                            sending_data = "SEL" + str(message_dict["messageId"]) + " " + message_dict["sender"] + " " + message_dict["timestamp"] + " " + str(len(message_dict["message"])) + " "  + message_dict["message"]
-                            sending_data = str(len(sending_data)) + sending_data
-                            # Send data to the logged in user's socket
-                            sending_data = sending_data.encode("utf-8")
-                            sent = to_sock.sendall(sending_data)
-
-                    else:
-                        # Pull just the error code out when we are using custom wire protocol
-                        return_data = call_info[1][:3]
-
-                case "RE":
-                    username, num = in_data.split(" ")
-                    call_info = read_message(username, num)
-                    if call_info[0] == True:
-                        return_data = "RET" + str(call_info[1]["num_read"])
-                        for message in call_info[1]["messages"]:
-                            return_data += " " + str(message["messageId"]) + " " + message["sender"]  + " " + message["timestamp"] + " " + str(len(message["message"])) + message["message"]
-                    else:
-                        # Pull just the error code out when we are using custom wire protocol
-                        return_data = call_info[1][:3]
-
-                case "DM":
-                    # delete message
-                    username, id = in_data.split(" ")
-                    call_info = delete_message(username, id)
-                    if call_info[0] == True:
-                        return_data = "DMT"
-                    else:
-                        # Pull just the error code out when we are using custom wire protocol
-                        return_data = call_info[1][:3]
-
-                case "DA":
-                    username = in_data
-                    call_info = delete_account(username)
-                    if call_info[0] == True:
-                        return_data = "DAT"
-                    else:
-                        # Pull just the error code out when we are using custom wire protocol
-                        return_data = call_info[1][:3]
-
-            return_data = str(len(return_data)) + return_data
-            return_data = return_data.encode("utf-8")
-            sent = sock.sendall(return_data)
-
-# JSON Version
-def service_connection_json(key, mask):
-    """
-    Services a connection from a client using json.
-
-    Parameters
-    ----------
-    key: namedtuple
-    mask: selectors.EVENT_READ / selectors.EVENT_WRITE
-
-    Returns
-    -------
-    None.
-
-    Notes
-    -----
-    This version understands json.
-    Though this function does not return, the server will always send some kind of response to the client.
-    In the case where a send message request is made, and the receiving user is logged in, the server will
-    send an additional message to the receiving user's socket with the new message information.
-    """
-    sock = key.fileobj
-    data = key.data
-    if mask & selectors.EVENT_READ:
-        # Reads the first number that is sent over to figure out how many total bytes are in the message
-        str_bytes = ""
-        recv_data = sock.recv(1)
-        while recv_data:
-            if len(recv_data.decode("utf-8")) > 0:
-                if (recv_data.decode("utf-8")).isnumeric():
-                    str_bytes += recv_data.decode("utf-8")
-                else:
+        Returns
+        -------
+        list
+            list[0] is always True. This function cannot fail.
+            list[1] is dictionary containing two pieces of data.
+            list[1]["num_read"] is the number of messages read, which may be less than num if the user
+            had less than num undelivered messages.
+            list[1]["messages"] is a list of dictionaries containint information about the messages that were read.
+            Each message has the following keys: sender, timestamp, message, messageId, and delivered.
+        """
+        print("Reading ", num, " messages for ", username)
+        # Go through message array for a user and append undelivered messages
+        num_read = 0
+        returned_messages = []
+        for message in self.accounts[username]["messageHistory"]:
+            if message["delivered"] == False:
+                returned_messages.append(message)
+                num_read += 1
+                if num_read == num:
                     break
-            recv_data = sock.recv(1)
-        if not recv_data:
-            print(f"Closing connection to {data.addr}")
-            sel.unregister(sock)
-            sock.close()
+
+        return [True, {"num_read": num_read, "messages": returned_messages}]
+
+    def delete_message(self, username, id):
+        """
+        Attempts to delete a message with a specific ID from a user's list of messages.
+
+        Parameters
+        ----------
+        username: str
+            The username of the account requesting to delete the message
+        id: int
+            The ID of the message to delete
+
+        Returns
+        -------
+        list
+            list[0] is True or False, and indicates if the user deleted the requested message successfully
+            list[1] is an empty string on success and an error message on failure
+        """
+        print("Deleting message", id, "from", username)
+        if username not in self.accounts:
+            return [False, "ER3: attempting to delete a message from an account that does not exist"]
+
+        message_id = int(id)
+        for i in range(len(self.accounts[username]["messageHistory"])):
+            if self.accounts[username]["messageHistory"][i]["messageId"] == message_id:
+                del self.accounts[username]["messageHistory"][i]
+                return [True, ""]
+        return [False, "ER4: account did not receive message with that id"]
+
+    def delete_account(self, username):
+        """
+        Deletes a account with the given username.
+
+        Parameters
+        ----------
+        username: str
+            The username of the account to delete
+
+        Returns
+        -------
+        list
+            list[0] is True or False, and indicates if the user deleted the requested account successfully
+            list[1] is an empty string on success and an error message on failure
+        """
+        print("Deleting account ", username)
+        if username not in self.accounts:
+            return [False, "ER1: attempting to delete an account that does not exist"]
         else:
-            num_bytes = int(str_bytes)
-
-            # Reads the next num_bytes bytes to get the full message
-            data.outb += recv_data
-            cur_bytes = 1
-            while(cur_bytes < num_bytes):
-                recv_data = sock.recv(num_bytes - cur_bytes)
-                if recv_data:
-                    data.outb += recv_data
-                    cur_bytes += len(recv_data.decode("utf-8"))
-                else:
-                    print(f"Closing connection to {data.addr}")
-                    sel.unregister(sock)
-                    sock.close()
+            del self.accounts[username]
+            return [True, ""]
 
 
-    if mask & selectors.EVENT_WRITE:
-        if not data.outb:
-            return
-        if data.outb:
-            in_data = data.outb.decode("utf-8")
-            # Flush out the input data from the buffer so that things remain synced
-            data.outb = data.outb[len(in_data):]
-            # Convert data to json format
-            in_data_json = json.loads(in_data)
-            # Get 2 letter request type code
-            request_type = in_data_json["type"]
+    # HELPERS FOR DEALING WITH SOCKETS
+    def accept_wrapper(self, sock):
+        """
+        Accepts a new connection from a client.
 
-            # Reserve error code ER0 for unknown request type
-            return_data = {"success": False, "errorMsg": "ER0: unknown request type"}
-            match request_type:
-                case "CR":
-                    # create account
-                    username = in_data_json["username"]
-                    password = in_data_json["password"]
-                    call_info = create_account(username, password)
-                    if call_info[0] == True:
-                        return_data = {"type" : "CRT", "success": True, "errorMsg": ""}
+        Parameters
+        ----------
+        sock: socket
+            The socket of the request comes from.
+
+        Returns
+        -------
+        None.
+        """
+        conn, addr = sock.accept()
+        print(f"Accepted connection from {addr}")
+        conn.setblocking(False)
+        data = types.SimpleNamespace(addr=addr, inb=b"", outb=b"", user=b"")
+        events = selectors.EVENT_READ | selectors.EVENT_WRITE
+        sel.register(conn, events, data=data)
+
+    # WIRE PROTOCOL VERSION
+    def service_connection_wp(self, key, mask):
+        """
+        Services a connection from a client using a custom wire protocol.
+
+        Parameters
+        ----------
+        key: namedtuple
+        mask: selectors.EVENT_READ / selectors.EVENT_WRITE
+
+        Returns
+        -------
+        None.
+
+        Notes
+        -----
+        This version understand the custom wire protocol.
+        Though this function does not return, the server will always send some kind of response to the client.
+        In the case where a send message request is made, and the receiving user is logged in, the server will
+        send an additional message to the receiving user's socket with the new message information.
+        """
+        sock = key.fileobj
+        data = key.data
+        if mask & selectors.EVENT_READ:
+            # Reads the first number that is sent over to figure out how many total bytes are in the message
+            str_bytes = ""
+            recv_data = sock.recv(1)
+            while recv_data:
+                if len(recv_data.decode("utf-8")) > 0:
+                    if (recv_data.decode("utf-8")).isnumeric():
+                        str_bytes += recv_data.decode("utf-8")
                     else:
-                        # Pull entire error message for json
-                        return_data["errorMsg"] = call_info[1]
+                        break
+                recv_data = sock.recv(1)
+            if not recv_data:
+                print(f"Closing connection to {data.addr}")
+                sel.unregister(sock)
+                sock.close()
+            else:
+                num_bytes = int(str_bytes)
 
-                case "LI":
-                    # login
-                    username = in_data_json["username"]
-                    password = in_data_json["password"]
-                    call_info = login(username, password, sock)
-
-                    if call_info[0] == True:
-                        return_data = {"type" : "LIT", "success": True, "errorMsg": ""}
+                # Reads the next num_bytes bytes to get the full message
+                data.outb += recv_data
+                cur_bytes = 1
+                while(cur_bytes < num_bytes):
+                    recv_data = sock.recv(num_bytes - cur_bytes)
+                    if recv_data:
+                        data.outb += recv_data
+                        cur_bytes += len(recv_data.decode("utf-8"))
                     else:
-                        # Pull entire error message for json
-                        return_data["errorMsg"] = call_info[1]
+                        print(f"Closing connection to {data.addr}")
+                        sel.unregister(sock)
+                        sock.close()
 
-                case "LO":
-                    # logout
-                    username = in_data_json["username"]
-                    call_info = logout(username)
-                    if call_info[0] == True:
-                        return_data = {"type" : "LOT", "success": True, "errorMsg": ""}
-                    else:
-                        # Pull entire error message for json
-                        return_data["errorMsg"] = call_info[1]
+        if mask & selectors.EVENT_WRITE:
+            if not data.outb:
+                return
+            if data.outb:
+                in_data = data.outb.decode("utf-8")
+                # Flush out the input data from the buffer so that things remain synced
+                data.outb = data.outb[len(in_data):]
+                # Get 2 letter request type code
+                request_type = in_data[:2]
+                # The rest of the sent over data is the data needed to complete the request
+                in_data = in_data[2:]
 
-                case "LA":
-                    # list accounts
-                    acct_names = list_accounts()[1]
-                    return_data = {"type" : "LAT", "success": True, "accounts": acct_names, "errorMsg": ""}
+                # Reserve error code ER0 for unknown request type
+                return_data = "ER0"
+                match request_type:
+                    case "CR":
+                        # create account
+                        username, password = in_data.split(" ")
+                        call_info = self.create_account(username, password)
+                        if call_info[0] == True:
+                            return_data = "CRT"
+                        else:
+                            # Pull just the error code out when we are using custom wire protocol
+                            return_data = call_info[1][:3]
 
-                case "SE":
-                    # send message
-                    from_username = in_data_json["from_username"]
-                    to_username = in_data_json["to_username"]
-                    time = in_data_json["timestamp"]
-                    message = in_data_json["message"]
+                    case "LI":
+                        # login
+                        username, password = in_data.split(" ")
+                        call_info = self.login(username, password, sock)
+                        if call_info[0] == True:
+                            return_data = "LIT"
+                        else:
+                            # Pull just the error code out when we are using custom wire protocol
+                            return_data = call_info[1][:3]
 
-                    call_info = send_message(from_username, to_username, message, time)
+                    case "LO":
+                        # logout
+                        username = in_data
+                        call_info = self.logout(username)
+                        if call_info[0] == True:
+                            return_data = "LOT"
+                        else:
+                            # Pull just the error code out when we are using custom wire protocol
+                            return_data = call_info[1][:3]
 
-                    # If the receiver is logged on, we send a special message to their socket
-                    # This facilitates instantaneous delivery
-                    if call_info[0] == True:
-                        return_data = {"type" : "SET", "success": True, "errorMsg": ""}
-                        if accounts[to_username]["loggedIn"] == True:
-                            to_sock = accounts[to_username]["socket"]
-                            message_dict = call_info[1]
-                            message_dict["type"] = "SEL"
-                            message_dict["success"] = True
-                            sending_data = json.dumps(message_dict)
-                            sending_data = str(len(sending_data)) + sending_data
-                            # Send data to the logged in user's socket
-                            sending_data = sending_data.encode("utf-8")
-                            sent = to_sock.sendall(sending_data)
+                    case "LA":
+                        # list accounts
+                        acct_names = self.list_accounts()[1]
+                        return_data = "LAT" + " ".join(acct_names)
 
-                    else:
-                        # Pull the entire error message for json
-                        return_data["errorMsg"] = call_info[1]
+                    case "SE":
+                        # send message
+                        in_data_array = in_data.split(" ")
+                        from_username = in_data_array[0]
+                        to_username = in_data_array[1]
+                        time = in_data_array[2]
+                        message = " ".join(in_data_array[3:])
+                        call_info = self.send_message(from_username, to_username, message, time)
 
-                case "RE":
-                    username = in_data_json["username"]
-                    num = in_data_json["number"]
-                    call_info = read_message(username, num)
-                    if call_info[0] == True:
-                        return_data = call_info[1]
-                        return_data["type"] = "RET"
-                    else:
-                        # Pull the entire error message for json
-                        return_data["errorMsg"] = call_info[1]
+                        if call_info[0] == True:
+                            return_data = "SET"
+                            # If the receiver is logged on, we send a special message to their socket
+                            # This facilitates instantaneous delivery
+                            if self.accounts[to_username]["loggedIn"] == True:
+                                to_sock = self.accounts[to_username]["socket"]
+                                message_dict = call_info[1]
+                                sending_data = "SEL" + str(message_dict["messageId"]) + " " + message_dict["sender"] + " " + message_dict["timestamp"] + " " + str(len(message_dict["message"])) + " "  + message_dict["message"]
+                                sending_data = str(len(sending_data)) + sending_data
+                                # Send data to the logged in user's socket
+                                sending_data = sending_data.encode("utf-8")
+                                sent = to_sock.sendall(sending_data)
 
-                case "DM":
-                    # delete message
-                    username = in_data_json["username"]
-                    id = in_data_json["id"]
-                    call_info = delete_message(username, id)
-                    if call_info[0] == True:
-                        return_data = {"success": True, "errorMsg": ""}
-                    else:
-                        # Pull the entire error message for json
-                        return_data["errorMsg"] = call_info[1]
+                        else:
+                            # Pull just the error code out when we are using custom wire protocol
+                            return_data = call_info[1][:3]
 
-                case "DA":
-                    username = in_data_json["username"]
-                    call_info = delete_account(username)
-                    if call_info[0] == True:
-                        return_data = {"success": True, "errorMsg": ""}
-                    else:
-                        # Pull just the error code out when we are using custom wire protocol
-                        return_data["errorMsg"] = call_info[1]
+                    case "RE":
+                        username, num = in_data.split(" ")
+                        call_info = self.read_message(username, num)
+                        if call_info[0] == True:
+                            return_data = "RET" + str(call_info[1]["num_read"])
+                            for message in call_info[1]["messages"]:
+                                return_data += " " + str(message["messageId"]) + " " + message["sender"]  + " " + message["timestamp"] + " " + str(len(message["message"])) + message["message"]
+                        else:
+                            # Pull just the error code out when we are using custom wire protocol
+                            return_data = call_info[1][:3]
 
-            # Send Json versions back to client
-            return_data = json.dumps(return_data)
-            return_data = str(len(return_data)) + return_data
-            return_data = return_data.encode("utf-8")
-            sent = sock.sendall(return_data)
+                    case "DM":
+                        # delete message
+                        username, id = in_data.split(" ")
+                        call_info = self.delete_message(username, id)
+                        if call_info[0] == True:
+                            return_data = "DMT"
+                        else:
+                            # Pull just the error code out when we are using custom wire protocol
+                            return_data = call_info[1][:3]
+
+                    case "DA":
+                        username = in_data
+                        call_info = self.delete_account(username)
+                        if call_info[0] == True:
+                            return_data = "DAT"
+                        else:
+                            # Pull just the error code out when we are using custom wire protocol
+                            return_data = call_info[1][:3]
+
+                return_data = str(len(return_data)) + return_data
+                return_data = return_data.encode("utf-8")
+                sent = sock.sendall(return_data)
 
 if __name__ == "__main__":
     # UNCOMMENT HOST AND PORT BELOW FOR LOCAL UNIT TESTING
@@ -624,24 +458,40 @@ if __name__ == "__main__":
     # server has 0.0.0.0 to listen on all interfaces
     HOST = os.environ.get("SERVER_IP")
     PORT = int(os.environ.get("PORT_SERVER"))
-    lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    lsock.bind((HOST, PORT))
-    lsock.listen()
-    print("Listening on", (HOST, PORT))
-    lsock.setblocking(False)
-    sel.register(lsock, selectors.EVENT_READ, data=None)
+
+
+    # lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # lsock.bind((HOST, PORT))
+    # lsock.listen()
+    # print("Listening on", (HOST, PORT))
+    # lsock.setblocking(False)
+    # sel.register(lsock, selectors.EVENT_READ, data=None)
+
+    # https://github.com/grpc/grpc/blob/master/examples/python/helloworld/greeter_server.py
+
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    # Add the servicer to the server
+    message_server_pb2_grpc.add_MessageServerServicer_to_server(MessageServer(), server)
+
+    # [::] listens on all interfaces same as 0.0.0.0
+    server.add_insecure_port(f'[::]:{PORT}')
+    server.start()
+    print(f"Server started on {HOST}:{PORT}")
+    print("finished server yay")
+    server.wait_for_termination()
 
     try:
-        while True:
-            events = sel.select(timeout=None)
-            for key, mask in events:
-                if key.data is None:
-                    accept_wrapper(key.fileobj)
-                else:
-                    # Version that understands the wire protocol
-                    # service_connection_wp(key, mask)
-                    # Version that understands json
-                    service_connection_json(key, mask)
+        pass
+        # while True:
+        #     events = sel.select(timeout=None)
+        #     for key, mask in events:
+        #         if key.data is None:
+        #             accept_wrapper(key.fileobj)
+        #         else:
+        #             # Version that understands the wire protocol
+        #             # service_connection_wp(key, mask)
+        #             # Version that understands json
+        #             service_connection_json(key, mask)
     except KeyboardInterrupt:
         print("Caught keyboard interrupt, exiting")
     finally:
