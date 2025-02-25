@@ -76,10 +76,12 @@ class SendMessageRequest(_message.Message):
     def __init__(self, fromUser: _Optional[str] = ..., toUser: _Optional[str] = ..., time: _Optional[str] = ..., message: _Optional[str] = ...) -> None: ...
 
 class SendMessageReplyToSender(_message.Message):
-    __slots__ = ("success",)
+    __slots__ = ("success", "errorMessage")
     SUCCESS_FIELD_NUMBER: _ClassVar[int]
+    ERRORMESSAGE_FIELD_NUMBER: _ClassVar[int]
     success: bool
-    def __init__(self, success: bool = ...) -> None: ...
+    errorMessage: str
+    def __init__(self, success: bool = ..., errorMessage: _Optional[str] = ...) -> None: ...
 
 class SendMessageReplyToLoggedInReceiver(_message.Message):
     __slots__ = ("success", "messageId", "fromUser", "time", "message")
@@ -141,12 +143,10 @@ class DeleteMessagesReply(_message.Message):
     def __init__(self, success: bool = ..., errorMessage: _Optional[str] = ...) -> None: ...
 
 class DeleteAccountRequest(_message.Message):
-    __slots__ = ("username", "messageId")
+    __slots__ = ("username",)
     USERNAME_FIELD_NUMBER: _ClassVar[int]
-    MESSAGEID_FIELD_NUMBER: _ClassVar[int]
     username: str
-    messageId: int
-    def __init__(self, username: _Optional[str] = ..., messageId: _Optional[int] = ...) -> None: ...
+    def __init__(self, username: _Optional[str] = ...) -> None: ...
 
 class DeleteAccountReply(_message.Message):
     __slots__ = ("success", "errorMessage")
