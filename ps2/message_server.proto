@@ -1,0 +1,128 @@
+// The greeting service definition.
+service MessageServer {
+    // Attempts to create a new account
+    rpc CreateAccount (CreateRequest) returns (CreateReply) {}
+    // Attempts to login the user
+    rpc LoginAccount (LoginRequest) returns (LoginReply) {}
+    // Attempts to logout the user
+    rpc LogoutAccount (LogoutRequest) returns (LogoutReply) {}
+    // Attempts to list all accounts
+    rpc ListAccounts (ListAccountsRequest) returns (ListAccountsReply) {}
+    // Attempts to send a message from one user to another
+    rpc SendMessage (SendMessageRequest) returns (SendMessageReplyToSender) {}
+    // Attempts to read a number of messages for one user
+    rpc ReadMessages (ReadMessagesRequest) returns (ReadMessagesReply) {}
+    // Attempts to delete a message from a user
+    rpc DeleteMessages (DeleteMessagesRequest) returns (DeleteMessagesReply) {}
+    // Attempts to delete an account
+    rpc DeleteAccount (DeleteAccountRequest) returns (DeleteAccountReply) {}
+}
+
+// The request message containing user's username and (hashed) password for account creation.
+message CreateRequest {
+    required string username = 1;
+    required string password = 2;
+}
+
+// The response message containing whether the create message succeeded
+message CreateReply {
+    required bool success = 1;
+    optional string errorMessage = 2;
+}
+
+// The request message containing user's username and (hashed) password for login.
+message LoginRequest {
+    required string username = 1;
+    required string password = 2;
+}
+
+// The response message containing whether the Login message succeeded
+message LoginReply {
+    required bool success = 1;
+    optional string errorMessage = 2;
+}
+
+// The request message containing user's username for logout.
+message LogoutRequest {
+    required string username = 1;
+}
+
+// The response message containing whether the Login message succeeded
+message LogoutReply {
+    required bool success = 1;
+    optional string errorMessage = 2;
+}
+
+// The request for listing accounts - is empty
+message ListAccountsRequest {}
+
+// The response containing the list of accounts
+message ListAccountsReply {
+    required bool success = 1;
+    repeated string accounts = 2;
+}
+
+// The request for sending a message
+message SendMessageRequest {
+    required string fromUser = 1;
+    required string toUser = 2;
+    required string time = 3;
+    required string message = 4;
+}
+
+// The response for sending a message to the sender
+message SendMessageReplyToSender {
+    required bool success = 1;
+}
+
+// The response for sending a message to the reciever if reciever is logged in
+message SendMessageReplyToLoggedInReceiver {
+    required bool success = 1;
+    required int32 messageId = 2;
+    required string fromUser = 3;
+    required string time = 4;
+    required string message = 5;
+}
+
+// The request for reading messages
+message ReadMessagesRequest {
+    required string username = 1;
+    required int32 numMessages = 2;
+}
+
+// The response for reading messages
+message ReadMessagesReply {
+    message Message {
+        required int32 messageId = 1;
+        required string fromUser = 2;
+        required string time = 3;
+        required string message = 4;
+    }
+    required bool success = 1;
+    required int32 numRead = 2;
+    repeated Message messages = 3;
+}
+
+// The request for deleting messages
+message DeleteMessagesRequest {
+    required string username = 1;
+    required int32 messageId = 2;
+}
+
+// The response for deleting messages
+message DeleteMessagesReply {
+    required bool success = 1;
+    optional string errorMessage = 2;
+}
+
+// The request for deleting an account
+message DeleteAccountRequest {
+    required string username = 1;
+    required int32 messageId = 2;
+}
+
+// The response for deleting an account
+message DeleteAccountReply {
+    required bool success = 1;
+    optional string errorMessage = 2;
+}
