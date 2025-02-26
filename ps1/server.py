@@ -639,9 +639,9 @@ if __name__ == "__main__":
                     accept_wrapper(key.fileobj)
                 else:
                     # Version that understands the wire protocol
-                    # service_connection_wp(key, mask)
+                    service_connection_wp(key, mask)
                     # Version that understands json
-                    service_connection_json(key, mask)
+                    # service_connection_json(key, mask)
     except KeyboardInterrupt:
         print("Caught keyboard interrupt, exiting")
     finally:
