@@ -12,7 +12,7 @@ import message_server_pb2
 import message_server_pb2_grpc
 import grpc
 load_dotenv()
-#
+
 class App(tk.Tk):
     """
     Main class for the chat app. Handles all UI and server communication.
