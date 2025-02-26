@@ -180,5 +180,5 @@ class InstantaneousMessagesReply(_message.Message):
     MESSAGES_FIELD_NUMBER: _ClassVar[int]
     success: bool
     numRead: int
-    messages: InstantaneousMessagesReply.Message
-    def __init__(self, success: bool = ..., numRead: _Optional[int] = ..., messages: _Optional[_Union[InstantaneousMessagesReply.Message, _Mapping]] = ...) -> None: ...
+    messages: _containers.RepeatedCompositeFieldContainer[InstantaneousMessagesReply.Message]
+    def __init__(self, success: bool = ..., numRead: _Optional[int] = ..., messages: _Optional[_Iterable[_Union[InstantaneousMessagesReply.Message, _Mapping]]] = ...) -> None: ...
