@@ -64,9 +64,6 @@ class App(tk.Tk):
         self.frames = {}
         self.show_frame(Onboarding)
 
-
-    # CLIENT STATE MANAGEMENT FUNCTIONS
-
     def run(self):
         self.mainloop()
 
@@ -105,7 +102,6 @@ class App(tk.Tk):
                 self.is_connected = True
                 print("Connected to server via gRPC.")
                 # If you use streaming RPCs for reading, start a thread here:
-                self.after(500, lambda: threading.Thread(target=self.read_from_server, daemon=True).start())
                 return True
             except grpc.FutureTimeoutError:
                 print("Server not available yet, retrying...")
@@ -114,9 +110,6 @@ class App(tk.Tk):
                 print(f"Failed to connect to server: {e}")
                 time.sleep(1)
 
-
-    def read_from_server(self):
-        pass
 
 class Onboarding(tk.Frame):
     """Class for the login/signup page
@@ -413,6 +406,8 @@ class MessageDisplay(tk.Frame):
         self.controller = controller
         self.number_of_messages = 10
 
+        threading.Thread(target=self.poll_messages, daemon=True).start()
+
 
         request = message_server_pb2.ReadMessagesRequest(
             username=self.controller.current_user,
@@ -420,10 +415,51 @@ class MessageDisplay(tk.Frame):
         )
         response = self.controller.connection.ReadMessages(request)
         if response.success:
-            self.controller.messages = list(response.messages)
+            for msg in response.messages:
+                message = {
+                    "fromUser": msg.fromUser,
+                    "time": msg.time,
+                    "message": msg.message,
+                    "messageId": msg.messageId
+                }
+                self.controller.messages.append(message)
         else:
             messagebox.showerror("Error", response.errorMessage)
         self._setup_ui()
+
+
+    def poll_messages(self):
+        # First check if user is logged in
+        if not self.controller.current_user or not self.controller.is_logged_in:
+            self.after_id = self.after(500, self.poll_messages)
+            return
+
+        try:
+            request = message_server_pb2.InstantaneousMessagesRequest(
+                username=self.controller.current_user)
+            response = self.controller.connection.GetInstantaneousMessages(request)
+            print("poll message", response)
+            if response.success:
+                if response.numRead > 0:
+                    for msg in response.messages:
+                        message = {
+                            "fromUser": msg.fromUser,
+                            "time": msg.time,
+                            "message": msg.message,
+                            "messageId": msg.messageId
+                        }
+                        self.controller.messages.append(message)
+                    # Refresh the display
+            self.refresh_display()
+
+        except Exception as e:
+            print(f"Error in poll_messages: {e}")
+
+        self.after_id = self.after(500, self.poll_messages)
+
+    def back_to_navigation(self):
+        self.after_cancel(self.after_id)
+        self.controller.show_frame(Navigation)
 
     def _setup_ui(self):
         """Setup all UI elements for the message display page"""
@@ -434,7 +470,7 @@ class MessageDisplay(tk.Frame):
         # no longer needed to cleanup
         self.back_button = ttk.Button(
             self, text="Back to Navigation",
-            command=lambda: self.controller.show_frame(Navigation)
+            command=self.back_to_navigation
         )
         self.delete_button = ttk.Button(
             self, text="Delete Message",
@@ -488,24 +524,23 @@ class MessageDisplay(tk.Frame):
         )
 
         response = self.controller.connection.ReadMessages(request)
-        print("this is the response", response)
 
         if response.success:
-            self.controller.messages = [
-                {
-                    "fromUser": msg.fromUser,
-                    "time": msg.time,
-                    "message": msg.message,
-                    "messageId": msg.messageId
-
-                }
-                for msg in response.messages]
+            if response.numRead > 0:
+                for msg in response.messages:
+                    message = {
+                        "fromUser": msg.fromUser,
+                        "time": msg.time,
+                        "message": msg.message,
+                        "messageId": msg.messageId
+                    }
+                    self.controller.messages.append(message)
         else:
             messagebox.showerror("Error", response.errorMessage)
             return
 
+        # Now display the messages
         for msg in self.controller.messages[:self.number_of_messages]:
-            print(self.controller.messages)
             self.message_list.insert(tk.END, self._format_message(msg))
 
         # Restore view state

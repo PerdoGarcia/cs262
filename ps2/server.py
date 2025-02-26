@@ -30,7 +30,7 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
                 # add in the socket connection
                 self.accounts[request.username] = {
                     "accountInfo": {"username": request.username, "password": request.password},
-                    "loggedIn": False,
+                    "loggedIn": True,
                     "messageHistory": []
                 }
 
@@ -77,7 +77,6 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
 
     def SendMessage(self, request, context):
         # TODO: ADD INSTANTANEOUS DELIVERY HERE
-        print("Sending message from ", request.fromUser, " to ", request.toUser)
         with self.lock:
             if request.toUser not in self.accounts:
                 return message_server_pb2.SendMessageReplyToSender(success=False, errorMessage="ER1: account with that username does not exist")
@@ -95,15 +94,6 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
                 self.accounts[request.toUser]["messageHistory"].append(message_dict)
             # Each time a message is sent the messageId counter goes up
             self.messageId += 1
-
-            # for every client that is connected to the server, check if the message
-            for connected_user in self.logged_in_users:
-                if connected_user == request.toUser:
-                    # If the user is logged in, send them the message
-                    return message_server_pb2.SendMessageReplyToLoggedInReceiver(
-
-                        success=True, messageId=message_dict["messageId"], fromUser=request.fromUser, time=request.time, message=request.message
-                        )
 
             return message_server_pb2.SendMessageReplyToSender(success=True, errorMessage="")
 
@@ -135,40 +125,31 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
                     for message in returned_messages]
             )
 
-            # readReply.success = True
-            # readReply.numRead = num_read
-
-            # for message in returned_messages:
-            #     print(message)
-            #     messageReply = readReply.Messages.add()
-            #     messageReply.fromUser = message["sender"]
-            #     messageReply.time = message["timestamp"]
-            #     messageReply.message = message["message"]
-            #     messageReply.messageId = message["messageId"]
-
-
-            print("afater,", readReply, "sdsad")
             return readReply
+
     def GetInstantaneousMessages(self, request, context):
         print("Getting instantaneous messages for ", request.username)
         with self.lock:
             if request.username not in self.instantMessages:
                 return message_server_pb2.InstantaneousMessagesReply(success=False)
             else:
+                if len(self.instantMessages[request.username]) == 0:
+                    return message_server_pb2.InstantaneousMessagesReply(success=True, numRead=0)
+
                 readReply = message_server_pb2.InstantaneousMessagesReply(
-                success=True,
-                numRead=len(self.instantMessages[request.username]),
-                messages=[
-                    {
-                        "fromUser": message["sender"],
-                        "time": message["timestamp"],
-                        "message": message["message"],
-                        "messageId": message["messageId"]
-                    }
-                    for message in self.instantMessages[request.username]]
-            )
+                    success=True,
+                    numRead=len(self.instantMessages[request.username]),
+                    messages=[
+                        {
+                            "fromUser": message["sender"],
+                            "time": message["timestamp"],
+                            "message": message["message"],
+                            "messageId": message["messageId"]
+                        }
+                        for message in self.instantMessages[request.username]]
+                )
                 del self.instantMessages[request.username]
-            return readReply
+                return readReply
 
 
     def DeleteMessages(self, request, context):

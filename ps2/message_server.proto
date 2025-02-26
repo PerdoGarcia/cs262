@@ -146,5 +146,5 @@ message InstantaneousMessagesReply {
     }
     required bool success = 1;
     optional int32 numRead = 2;
-    optional Message messages = 3;
+    repeated Message messages = 3;
 }
