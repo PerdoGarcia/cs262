@@ -595,6 +595,9 @@ class MessageDisplay(tk.Frame):
 
         if not response.success:
             messagebox.showerror("Error", response.errorMessage)
+        else:
+            self.controller.messages.pop(selection)
+            self.refresh_display()
 
 class SearchAccount(tk.Frame):
     # todo fix this shit
