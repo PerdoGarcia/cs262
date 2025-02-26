@@ -24,6 +24,23 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
         self.lock = threading.Lock()
 
     def CreateAccount(self, request, context):
+        """
+        Attempts to create an account with the given username and password
+
+        Parameters
+        ----------
+        request : message_server_pb2.CreateRequest
+            request.username : str
+                The desired username of the account
+            request.password : str
+                The desired password of the account
+
+        Returns
+        -------
+        reply: message_server_pb2.CreateReply
+            reply.success is True or False, and indicates if the account was created successfully
+            reply.errorMessage is an empty string on success and an error message on failure
+        """
         print("Trying to create account for ", request.username)
         with self.lock:
             if request.username not in self.accounts:
@@ -40,6 +57,23 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
                 return message_server_pb2.CreateReply(success=False, errorMessage="ER1: account is already in database")
 
     def LoginAccount(self, request, context):
+        """
+        Attempts to log a user in with the given username and password
+
+        Parameters
+        ----------
+        request : message_server_pb2.LoginRequest
+            request.username : str
+                The username of the account being logged into
+            request.password : str
+                The inputted (hashed) password of the account being logged into
+
+        Returns
+        -------
+        reply: message_server_pb2.LoginReply
+            reply.success is True or False, and indicates if the account was created successfully
+            reply.errorMessage is an empty string on success and an error message on failure
+        """
         print("Trying to login ", request.username)
         with self.lock:
             if request.username not in self.accounts:
@@ -56,6 +90,21 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
                     return message_server_pb2.LoginReply(success=False, errorMessage="ER2: incorrect password")
 
     def LogoutAccount(self, request, context):
+        """
+        Attempts to logout a user in with the given username and password
+
+        Parameters
+        ----------
+        request : message_server_pb2.LogoutRequest
+            request.username : str
+                The username of the account being logged out of
+
+        Returns
+        -------
+        reply: message_server_pb2.LogoutReply
+            reply.success is True or False, and indicates if the account was created successfully
+            reply.errorMessage is an empty string on success and an error message on failure
+        """
         print("Trying to logout ", request.username)
         with self.lock:
             if request.username not in self.accounts:
@@ -68,6 +117,19 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
                 return message_server_pb2.LogoutReply(success=True, errorMessage="")
 
     def ListAccounts(self, request, context):
+        """
+        Lists all accounts currently on the server.
+        
+        Parameters
+        ----------
+        None.
+
+        Returns
+        -------
+        reply: message_server_pb2.ListAccountsReply
+            reply.success is always True. This function cannot fail.
+            reply.accounts is a list of all account names stored by the server.
+        """
         with self.lock:
             accountNames = list(self.accounts.keys())
             accountReply = message_server_pb2.ListAccountsReply()
@@ -76,14 +138,35 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
             return accountReply
 
     def SendMessage(self, request, context):
-        # TODO: ADD INSTANTANEOUS DELIVERY HERE
+        """
+        Attempts to send a message from one user to another. If the receiving user is logged in, the message
+        is marked as delivered instantly. Otherwise, it is marked as undelivered.
+
+        Parameters
+        ----------
+        request : message_server_pb2.SendMessageRequest
+            request.fromUser : str
+                The username of the account sending the message
+            request.toUser: str
+                The username of the account receiving the message
+            user.time:
+                A string representing the string to be sent
+            user.message: str
+                The message text
+
+        Returns
+        -------
+        reply: message_server_pg2.SendMessageReplyToSender
+            reply.success is True or False, and indicates if the message was sent successfully to the other user
+            reply.errorMessage is an empty string on success and an error message on failure
+        """
         print("Sending message from ", request.fromUser, " to ", request.toUser)
         with self.lock:
             if request.toUser not in self.accounts:
                 return message_server_pb2.SendMessageReplyToSender(success=False, errorMessage="ER1: account with that username does not exist")
 
             if self.accounts[request.toUser]["loggedIn"] == True:
-                # If user is logged in, the message is marked as delivered instantly
+                # If user is logged in, the message is marked as delivered instantly, and message is added to list of "instant messages" for that user
                 message_dict = {"sender": request.fromUser, "timestamp": request.time, "message": request.message, "messageId": self.messageId, "delivered": True}
                 if request.toUser not in self.instantMessages:
                     self.instantMessages[request.toUser] = []
@@ -108,6 +191,26 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
             return message_server_pb2.SendMessageReplyToSender(success=True, errorMessage="")
 
     def ReadMessages(self, request, context):
+        """
+        Attempts to get undelivered messages for a user.
+
+        Parameters
+        ----------
+        request: message_server_pb2.ReadMessagesRequest
+            request.username: str
+                The username of the account requesting to read messages
+            request.numMessages: int
+                The number of messages requested
+
+        Returns
+        -------
+        reply: message_server_pb2.ReadMessagesReply
+            reply.success is always True. This function cannot fail.
+            reply.numRead is the number of messages read, which may be less than num if the user
+            had less than num undelivered messages.
+            reply.messages is a list of messages objects
+                Each message has the following keys: messageId, fromUser, time, message.
+        """
         print("Reading ", request.numMessages, " messages for ", request.username)
         with self.lock:
             # Go through message array for a user and append undelivered messages
@@ -135,21 +238,27 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
                     for message in returned_messages]
             )
 
-            # readReply.success = True
-            # readReply.numRead = num_read
-
-            # for message in returned_messages:
-            #     print(message)
-            #     messageReply = readReply.Messages.add()
-            #     messageReply.fromUser = message["sender"]
-            #     messageReply.time = message["timestamp"]
-            #     messageReply.message = message["message"]
-            #     messageReply.messageId = message["messageId"]
-
-
             print("afater,", readReply, "sdsad")
             return readReply
+        
     def GetInstantaneousMessages(self, request, context):
+        """
+        Attempts to read instantaneous messages for a user.
+
+        Parameters
+        ----------
+        request: message_server_pb2.InstantaneousMessagesRequest
+            request.username: str
+                The username of the account requesting to read instantaneous messages
+
+        Returns
+        -------
+        reply: message_server_pb2.InstantaneousMessagesReply
+            reply.success is True if there is at least one message waiting to be instantly read, otherwise False.
+            reply.numRead is the number of messages read. This function always reads all instantenous messages waiting for a user.
+            reply.messages is a list of messages objects
+                Each message has the following keys: messageId, fromUser, time, message.
+        """
         print("Getting instantaneous messages for ", request.username)
         with self.lock:
             if request.username not in self.instantMessages:
@@ -172,6 +281,23 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
 
 
     def DeleteMessages(self, request, context):
+        """
+        Attempts to delete a message with a specific ID from a user's list of messages.
+
+        Parameters
+        ----------
+        request: message_server_pb2.DeleteMessagesRequest
+            request.username: str
+                The username of the account requesting to delete a message
+            request.messageId: int
+                The ID of the message to delete
+
+        Returns
+        -------
+        reply: message_server_pb2.DeleteMessagesReply
+            reply.success is True or False, and indicates if the user deleted the requested message successfully
+            reply.errorMessage is an empty string on success and an error message on failure
+        """
         print("Deleting message", request.messageId, "from", request.username)
         with self.lock:
             if request.username not in self.accounts:
@@ -184,6 +310,21 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
             return message_server_pb2.DeleteMessagesReply(success=False, errorMessage="ER4: account did not receive message with that id")
 
     def DeleteAccount(self, request, context):
+        """
+        Deletes a account with the given username.
+
+        Parameters
+        ----------
+        request: message_server_pb2.DeleteAccountRequest
+            request.username: str
+                The username of the account to delete
+
+        Returns
+        -------
+        reply: message_server_pb2.DeleteAccountReply
+            reply.success is True or False, and indicates if the user deleted the requested message successfully
+            reply.errorMessage is an empty string on success and an error message on failure
+        """
         print("Deleting account ", request.username)
         with self.lock:
             if request.username not in self.accounts:
@@ -193,7 +334,7 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
                 del self.accounts[request.username]
                 return message_server_pb2.DeleteAccountReply(success=True, errorMessage="")
 
-# Handles new requests
+# Handles new requests from clients
 def serve():
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     message_server_pb2_grpc.add_MessageServerServicer_to_server(
