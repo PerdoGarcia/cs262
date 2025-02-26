@@ -1,6 +1,7 @@
 # Adapted from lecture code
 
 from dotenv import load_dotenv
+import os
 
 # gRPC imports
 import grpc
@@ -196,7 +197,7 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
         Returns
         -------
         reply: message_server_pb2.ReadMessagesReply
-            reply.success is always True. This function cannot fail.
+            reply.success is always True if the user exists and False if the user does not exist.
             reply.numRead is the number of messages read, which may be less than num if the user
             had less than num undelivered messages.
             reply.messages is a list of messages objects
@@ -204,6 +205,9 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
         """
         print("Reading ", request.numMessages, " messages for ", request.username)
         with self.lock:
+            if request.username not in self.accounts:
+                return message_server_pb2.ReadMessagesReply(success=False, numRead=0, messages=[])
+
             # Go through message array for a user and append undelivered messages
             num_read = 0
             returned_messages = []
@@ -320,10 +324,11 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
         print("Deleting account ", request.username)
         with self.lock:
             if request.username not in self.accounts:
-                del self.logged_in_users[request.username]
                 return message_server_pb2.DeleteAccountReply(success=False, errorMessage="ER1: attempting to delete an account that does not exist")
             else:
                 del self.accounts[request.username]
+                if request.username in self.logged_in_users:
+                    del self.logged_in_users[request.username]
                 return message_server_pb2.DeleteAccountReply(success=True, errorMessage="")
 
 # Handles new requests from clients
@@ -332,8 +337,7 @@ def serve():
     message_server_pb2_grpc.add_MessageServerServicer_to_server(
         MessageServer(), server
     )
-    # TODO: probably need to change this
-    server.add_insecure_port("[::]:5001")
+    server.add_insecure_port("[::]:" + os.environ.get("GRPC_PORT"))
     server.start()
     server.wait_for_termination()
 
