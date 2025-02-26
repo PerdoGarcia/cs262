@@ -52,7 +52,6 @@ class App(tk.Tk):
         # stub for server communication
         self.connection = message_server_pb2_grpc.MessageServerStub(self.channel)
 
-
         # Setup UI container
         self.container = tk.Frame(self)
         self.container.pack(side="top", fill="both", expand=True)
@@ -151,15 +150,9 @@ class Onboarding(tk.Frame):
         self.button_create_account = tk.Button(self, text="Create Account", command=self.handle_create_account)
         self.button_create_account.grid(row=2, column=2)
 
-    # cleanup function to cancel any pending after calls
-    def cleanup(self):
-        if self.after_id:
-            self.after_cancel(self.after_id)
-            self.after_id = None
 
     # leave to navigation page
     def leave_to_navigation(self):
-        self.cleanup()
         self.controller.show_frame(Navigation)
 
     # gpt hash function
@@ -303,7 +296,6 @@ class Navigation(tk.Frame):
     def on_delete_account(self):
         request = message_server_pb2.DeleteAccountRequest(
             username=self.controller.current_user,
-            messageId=0
         )
         response = self.controller.connection.DeleteAccount(request)
 
@@ -376,7 +368,6 @@ class Chat(tk.Frame):
 
     #
     def back_to_navigation(self):
-        self.after_cancel(self.after_id)
         self.controller.show_frame(Navigation)
 
 
@@ -429,11 +420,10 @@ class MessageDisplay(tk.Frame):
         )
         response = self.controller.connection.ReadMessages(request)
         if response.success:
-            self.controller.messages = response.messages
+            self.controller.messages = list(response.messages)
         else:
             messagebox.showerror("Error", response.errorMessage)
         self._setup_ui()
-        self.refresh_display()
 
     def _setup_ui(self):
         """Setup all UI elements for the message display page"""
@@ -474,10 +464,11 @@ class MessageDisplay(tk.Frame):
 
         self.paned.add(self.message_list)
         self.paned.add(self.message_content)
+        self.refresh_display()
 
     def _format_message(self, msg):
         """Format a message dictionary into display string"""
-        return f"From: {msg['sender']}: {msg['message']} \n\n At: {msg['timestamp']}"
+        return f"From: {msg['fromUser']}: {msg['message']} \n\n At: {msg['time']}"
 
     def refresh_display(self):
         """Update the message list display while preserving selection and scroll"""
@@ -490,7 +481,31 @@ class MessageDisplay(tk.Frame):
 
         # Update display
         self.message_list.delete(0, tk.END)
+
+        request = message_server_pb2.ReadMessagesRequest(
+            username=self.controller.current_user,
+            numMessages=self.number_of_messages
+        )
+
+        response = self.controller.connection.ReadMessages(request)
+        print("this is the response", response)
+
+        if response.success:
+            self.controller.messages = [
+                {
+                    "fromUser": msg.fromUser,
+                    "time": msg.time,
+                    "message": msg.message,
+                    "messageId": msg.messageId
+
+                }
+                for msg in response.messages]
+        else:
+            messagebox.showerror("Error", response.errorMessage)
+            return
+
         for msg in self.controller.messages[:self.number_of_messages]:
+            print(self.controller.messages)
             self.message_list.insert(tk.END, self._format_message(msg))
 
         # Restore view state
@@ -547,11 +562,11 @@ class MessageDisplay(tk.Frame):
             messagebox.showerror("Error", response.errorMessage)
 
 class SearchAccount(tk.Frame):
+    # todo fix this shit
     def __init__(self, parent, controller):
         tk.Frame.__init__(self, parent)
         self.controller = controller
         self.accounts = self.controller.accounts
-        self.is_first_display = True
 
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(2, weight=1)
@@ -578,25 +593,21 @@ class SearchAccount(tk.Frame):
         self.update_accounts()
 
     def back_to_navigation(self):
-        self.after_cancel(self.after_id)
         self.controller.show_frame(Navigation)
 
     def update_accounts(self):
         request = message_server_pb2.ListAccountsRequest()
         response = self.controller.connection.ListAccounts(request)
-        if response.success:
-            self.controller.accounts = response.accounts
 
+        if response.success:
+            self.controller.accounts = list(response.accounts)
 
         self.display_accounts()
-        self.after_id = self.after(500, self.update_accounts)
 
     def display_accounts(self, filter_text=None):
         # Always display if we have a filter_text, regardless of whether accounts changed
-        if not filter_text and not self.is_first_display and self.controller.accounts == self.accounts:
+        if not filter_text and self.controller.accounts == self.accounts:
             return
-
-        self.is_first_display = False
         self.accounts = self.controller.accounts.copy()
         self.results_text.config(state='normal')
         self.results_text.delete(1.0, tk.END)

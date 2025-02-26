@@ -1,4 +1,5 @@
 syntax = "proto2";
+
 // The greeting service definition.
 service MessageServer {
     // Attempts to create a new account
@@ -74,6 +75,7 @@ message SendMessageRequest {
 // The response for sending a message to the sender
 message SendMessageReplyToSender {
     required bool success = 1;
+    optional string errorMessage = 2;
 }
 
 // The response for sending a message to the reciever if reciever is logged in
@@ -119,7 +121,6 @@ message DeleteMessagesReply {
 // The request for deleting an account
 message DeleteAccountRequest {
     required string username = 1;
-    required int32 messageId = 2;
 }
 
 // The response for deleting an account
