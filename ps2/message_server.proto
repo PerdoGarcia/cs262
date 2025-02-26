@@ -18,6 +18,8 @@ service MessageServer {
     rpc DeleteMessages (DeleteMessagesRequest) returns (DeleteMessagesReply) {}
     // Attempts to delete an account
     rpc DeleteAccount (DeleteAccountRequest) returns (DeleteAccountReply) {}
+    // Gets any "instananeous delivery messages" waiting for a user
+    rpc GetInstantaneousMessages (InstantaneousMessagesRequest) returns (InstantaneousMessagesReply) {}
 }
 
 // The request message containing user's username and (hashed) password for account creation.
@@ -127,4 +129,22 @@ message DeleteAccountRequest {
 message DeleteAccountReply {
     required bool success = 1;
     optional string errorMessage = 2;
+}
+
+// The request getting instantaneous messages
+message InstantaneousMessagesRequest {
+    required string username = 1;
+}
+
+// The response for reading instantenous messages
+message InstantaneousMessagesReply {
+    message Message {
+        required int32 messageId = 1;
+        required string fromUser = 2;
+        required string time = 3;
+        required string message = 4;
+    }
+    required bool success = 1;
+    optional int32 numRead = 2;
+    optional Message messages = 3;
 }

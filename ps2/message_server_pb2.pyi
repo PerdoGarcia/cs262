@@ -155,3 +155,30 @@ class DeleteAccountReply(_message.Message):
     success: bool
     errorMessage: str
     def __init__(self, success: bool = ..., errorMessage: _Optional[str] = ...) -> None: ...
+
+class InstantaneousMessagesRequest(_message.Message):
+    __slots__ = ("username",)
+    USERNAME_FIELD_NUMBER: _ClassVar[int]
+    username: str
+    def __init__(self, username: _Optional[str] = ...) -> None: ...
+
+class InstantaneousMessagesReply(_message.Message):
+    __slots__ = ("success", "numRead", "messages")
+    class Message(_message.Message):
+        __slots__ = ("messageId", "fromUser", "time", "message")
+        MESSAGEID_FIELD_NUMBER: _ClassVar[int]
+        FROMUSER_FIELD_NUMBER: _ClassVar[int]
+        TIME_FIELD_NUMBER: _ClassVar[int]
+        MESSAGE_FIELD_NUMBER: _ClassVar[int]
+        messageId: int
+        fromUser: str
+        time: str
+        message: str
+        def __init__(self, messageId: _Optional[int] = ..., fromUser: _Optional[str] = ..., time: _Optional[str] = ..., message: _Optional[str] = ...) -> None: ...
+    SUCCESS_FIELD_NUMBER: _ClassVar[int]
+    NUMREAD_FIELD_NUMBER: _ClassVar[int]
+    MESSAGES_FIELD_NUMBER: _ClassVar[int]
+    success: bool
+    numRead: int
+    messages: InstantaneousMessagesReply.Message
+    def __init__(self, success: bool = ..., numRead: _Optional[int] = ..., messages: _Optional[_Union[InstantaneousMessagesReply.Message, _Mapping]] = ...) -> None: ...
