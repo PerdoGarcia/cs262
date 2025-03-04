@@ -16,7 +16,6 @@ dotenv.load_dotenv()
 def instruction_performer(message_queue, port_number, clock_speed, run_event, connections, connections_lock, run_mesages):
     # Starts with logical clock at time 0
     clock = 0
-    tick_speed = 1 / clock_speed
     machine_id = port_number - 5001
 
     # maps machine id to socket
@@ -35,60 +34,61 @@ def instruction_performer(message_queue, port_number, clock_speed, run_event, co
 
     # Run while the run_event is true
     while run_event.is_set():
-        current_time = time.time()
-        if not message_queue.empty():
-            print("Queue not empty")
-            message = message_queue.get_nowait()
-            # just log the message
-            log_message(log_file, "RECEIVE ", f"Receive machine {message['sender']}", clock, message_queue.qsize())
-        else:
-            event = random.randint(1, 10)
-            # Send message based on event
-            if event == 1:
-                if connections:
-                    recipient_id = random.choice(list(connections.keys()))
-                    message = {
-                        "time": clock,
-                        "sender": machine_id,
-                        "recipient": recipient_id,
-                    }
-                    send_message(message, connections[recipient_id])
-                    log_message(log_file, "  SEND  ", f"Sent to machine {recipient_id}", clock, message_queue.qsize())
-
-            elif event == 2:
-                recipient_id = (machine_id + 1) % 3
-                if recipient_id in connections:
-                    message = {
-                        "time": clock,
-                        "sender": machine_id,
-                        "recipient": recipient_id,
-                    }
-                    send_message(message, connections[recipient_id])
-                    log_message(log_file, "  SEND  ", f"Sent to machine {recipient_id}", clock, message_queue.qsize())
-
-            elif event == 3:
-                for recipient, sock in connections.items():
-                    if recipient != machine_id:
+        second_start = time.time()
+        for _ in range(clock_speed):
+            if not message_queue.empty():
+                print("Queue not empty")
+                message = message_queue.get_nowait()
+                # just log the message
+                log_message(log_file, "RECEIVE ", f"Receive machine {message['sender']}", clock, message_queue.qsize())
+            else:
+                event = random.randint(1, 10)
+                # Send message based on event
+                if event == 1:
+                    if connections:
+                        recipient_id = random.choice(list(connections.keys()))
                         message = {
                             "time": clock,
                             "sender": machine_id,
-                            "recipient": recipient,
+                            "recipient": recipient_id,
                         }
-                        send_message(message, sock)
-                        log_message(log_file, "  SEND  ", f"Sent to machine {recipient}", clock, message_queue.qsize())
+                        send_message(message, connections[recipient_id])
+                        log_message(log_file, "  SEND  ", f"Sent to machine {recipient_id}", clock, message_queue.qsize())
 
-            else:
-                log_message(log_file, "INTERNAL", "    No Details   ", clock, message_queue.qsize())
+                elif event == 2:
+                    recipient_id = (machine_id + 1) % 3
+                    if recipient_id in connections:
+                        message = {
+                            "time": clock,
+                            "sender": machine_id,
+                            "recipient": recipient_id,
+                        }
+                        send_message(message, connections[recipient_id])
+                        log_message(log_file, "  SEND  ", f"Sent to machine {recipient_id}", clock, message_queue.qsize())
 
-            # Update the logical clock based on the elapsed time
-            clock = update_clock(clock, clock_speed, time.time() - current_time)
+                elif event == 3:
+                    for recipient, sock in connections.items():
+                        if recipient != machine_id:
+                            message = {
+                                "time": clock,
+                                "sender": machine_id,
+                                "recipient": recipient,
+                            }
+                            send_message(message, sock)
+                            log_message(log_file, "  SEND  ", f"Sent to machine {recipient}", clock, message_queue.qsize())
 
+                else:
+                    log_message(log_file, "INTERNAL", "    No Details   ", clock, message_queue.qsize())
 
+            clock += 1
 
-def update_clock(clock, clock_speed, time_passed):
-    # Updates the logical clock based on the time passed and the clock speed
-    clock += clock_speed * time_passed
-    return clock
+        # calc how long we've spent doing operations
+        elapsed = time.time() - second_start
+
+        # Sleep for the remainder of the second
+        sleep_time = max(0, 1.0 - elapsed)
+        if sleep_time > 0:
+            time.sleep(sleep_time)
 
 def send_message(message, sock):
     # sends the message to the socket
@@ -163,7 +163,7 @@ def service_connection(key, message_queue, sel):
             # Convert data to json format
             in_data_json = json.loads(in_data)
             # Print the message
-            # print(f"Received message: {in_data_json}")
+            print(f"Received message: {in_data_json}")
             # Adds message to the queue
             message_queue.put(in_data_json)
         except Exception as e:
@@ -285,11 +285,10 @@ def main():
     print("Waiting for machines to connect")
     time.sleep(5)
 
-    total_runtime = 60
-    run_mesages.set()
     try:
         # TODO: probably make this more elegant
-        time.sleep(total_runtime)
+        run_mesages.set()
+        time.sleep(60)
     except KeyboardInterrupt:
         print("Caught keyboard interrupt, exiting")
         print("Attempting to close threads")
