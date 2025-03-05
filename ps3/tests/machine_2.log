@@ -1,0 +1,64 @@
+System Time: 2025-03-05 05:25:27 | | INITIAL | | Machine 2 initialized with clock speed 1 | | Queue Size: 0 | | Logical Clock: 0
+System Time: 2025-03-05 05:25:27 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 0
+System Time: 2025-03-05 05:25:28 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 1
+System Time: 2025-03-05 05:25:29 | | RECEIVE  | | Receive machine 0 | | Queue Size: 0 | | Logical Clock: 3
+System Time: 2025-03-05 05:25:30 | | RECEIVE  | | Receive machine 1 | | Queue Size: 1 | | Logical Clock: 4
+System Time: 2025-03-05 05:25:31 | | RECEIVE  | | Receive machine 0 | | Queue Size: 0 | | Logical Clock: 5
+System Time: 2025-03-05 05:25:32 | |   SEND   | | Sent to machine 0 | | Queue Size: 0 | | Logical Clock: 5
+System Time: 2025-03-05 05:25:32 | |   SEND   | | Sent to machine 1 | | Queue Size: 0 | | Logical Clock: 5
+System Time: 2025-03-05 05:25:33 | |   SEND   | | Sent to machine 0 | | Queue Size: 0 | | Logical Clock: 6
+System Time: 2025-03-05 05:25:34 | |   SEND   | | Sent to machine 0 | | Queue Size: 0 | | Logical Clock: 7
+System Time: 2025-03-05 05:25:35 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 8
+System Time: 2025-03-05 05:25:36 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 9
+System Time: 2025-03-05 05:25:37 | | RECEIVE  | | Receive machine 0 | | Queue Size: 0 | | Logical Clock: 11
+System Time: 2025-03-05 05:25:38 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 11
+System Time: 2025-03-05 05:25:39 | |   SEND   | | Sent to machine 0 | | Queue Size: 0 | | Logical Clock: 12
+System Time: 2025-03-05 05:25:40 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 13
+System Time: 2025-03-05 05:25:41 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 14
+System Time: 2025-03-05 05:25:42 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 15
+System Time: 2025-03-05 05:25:43 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 16
+System Time: 2025-03-05 05:25:44 | | RECEIVE  | | Receive machine 1 | | Queue Size: 0 | | Logical Clock: 18
+System Time: 2025-03-05 05:25:45 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 18
+System Time: 2025-03-05 05:25:46 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 19
+System Time: 2025-03-05 05:25:47 | | RECEIVE  | | Receive machine 0 | | Queue Size: 0 | | Logical Clock: 21
+System Time: 2025-03-05 05:25:48 | | RECEIVE  | | Receive machine 1 | | Queue Size: 0 | | Logical Clock: 22
+System Time: 2025-03-05 05:25:49 | | RECEIVE  | | Receive machine 1 | | Queue Size: 0 | | Logical Clock: 23
+System Time: 2025-03-05 05:25:50 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 23
+System Time: 2025-03-05 05:25:51 | | RECEIVE  | | Receive machine 1 | | Queue Size: 0 | | Logical Clock: 25
+System Time: 2025-03-05 05:25:52 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 25
+System Time: 2025-03-05 05:25:53 | | RECEIVE  | | Receive machine 1 | | Queue Size: 0 | | Logical Clock: 27
+System Time: 2025-03-05 05:25:54 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 27
+System Time: 2025-03-05 05:25:55 | |   SEND   | | Sent to machine 1 | | Queue Size: 0 | | Logical Clock: 28
+System Time: 2025-03-05 05:25:56 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 29
+System Time: 2025-03-05 05:25:57 | | RECEIVE  | | Receive machine 0 | | Queue Size: 0 | | Logical Clock: 31
+System Time: 2025-03-05 05:25:58 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 31
+System Time: 2025-03-05 05:25:59 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 32
+System Time: 2025-03-05 05:26:00 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 33
+System Time: 2025-03-05 05:26:01 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 34
+System Time: 2025-03-05 05:26:02 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 35
+System Time: 2025-03-05 05:26:03 | |   SEND   | | Sent to machine 0 | | Queue Size: 0 | | Logical Clock: 36
+System Time: 2025-03-05 05:26:04 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 37
+System Time: 2025-03-05 05:26:05 | |   SEND   | | Sent to machine 0 | | Queue Size: 0 | | Logical Clock: 38
+System Time: 2025-03-05 05:26:06 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 39
+System Time: 2025-03-05 05:26:07 | |   SEND   | | Sent to machine 0 | | Queue Size: 0 | | Logical Clock: 40
+System Time: 2025-03-05 05:26:08 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 41
+System Time: 2025-03-05 05:26:09 | |   SEND   | | Sent to machine 0 | | Queue Size: 0 | | Logical Clock: 42
+System Time: 2025-03-05 05:26:09 | |   SEND   | | Sent to machine 1 | | Queue Size: 0 | | Logical Clock: 42
+System Time: 2025-03-05 05:26:10 | | RECEIVE  | | Receive machine 1 | | Queue Size: 0 | | Logical Clock: 44
+System Time: 2025-03-05 05:26:11 | | RECEIVE  | | Receive machine 0 | | Queue Size: 0 | | Logical Clock: 45
+System Time: 2025-03-05 05:26:12 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 45
+System Time: 2025-03-05 05:26:13 | | RECEIVE  | | Receive machine 0 | | Queue Size: 0 | | Logical Clock: 47
+System Time: 2025-03-05 05:26:14 | |   SEND   | | Sent to machine 0 | | Queue Size: 0 | | Logical Clock: 47
+System Time: 2025-03-05 05:26:14 | |   SEND   | | Sent to machine 1 | | Queue Size: 0 | | Logical Clock: 47
+System Time: 2025-03-05 05:26:15 | | RECEIVE  | | Receive machine 1 | | Queue Size: 0 | | Logical Clock: 49
+System Time: 2025-03-05 05:26:16 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 49
+System Time: 2025-03-05 05:26:17 | |   SEND   | | Sent to machine 0 | | Queue Size: 0 | | Logical Clock: 50
+System Time: 2025-03-05 05:26:18 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 51
+System Time: 2025-03-05 05:26:19 | | RECEIVE  | | Receive machine 1 | | Queue Size: 0 | | Logical Clock: 53
+System Time: 2025-03-05 05:26:20 | |   SEND   | | Sent to machine 0 | | Queue Size: 1 | | Logical Clock: 53
+System Time: 2025-03-05 05:26:21 | | RECEIVE  | | Receive machine 0 | | Queue Size: 0 | | Logical Clock: 55
+System Time: 2025-03-05 05:26:22 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 55
+System Time: 2025-03-05 05:26:23 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 56
+System Time: 2025-03-05 05:26:24 | | INTERNAL | |     No Details    | | Queue Size: 0 | | Logical Clock: 57
+System Time: 2025-03-05 05:26:25 | |   SEND   | | Sent to machine 0 | | Queue Size: 0 | | Logical Clock: 58
+System Time: 2025-03-05 05:26:26 | | RECEIVE  | | Receive machine 1 | | Queue Size: 0 | | Logical Clock: 60
