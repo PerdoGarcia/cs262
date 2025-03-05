@@ -201,6 +201,7 @@ def accept_wrapper(sock, sel, machine_id, connections, connections_lock):
                 print(f"Machine {machine_id} registered connection from Machine {other_id}")
             break
 
+
     print(f"Accepted connection from {addr}")
     conn.setblocking(False)
     data = types.SimpleNamespace(addr=addr, inb=b"", outb=b"", user=b"")
