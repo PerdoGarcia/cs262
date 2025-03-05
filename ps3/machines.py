@@ -1,3 +1,4 @@
+from multiprocessing import Process
 import threading
 import random
 from queue import Queue
@@ -13,7 +14,7 @@ import time
 
 dotenv.load_dotenv()
 
-def instruction_performer(message_queue, port_number, clock_speed, run_event, connections, connections_lock, run_mesages):
+def instruction_performer(message_queue, port_number, clock_speed, connections, connections_lock):
     # Starts with logical clock at time 0
     clock = 0
     machine_id = port_number - 5001
@@ -25,7 +26,6 @@ def instruction_performer(message_queue, port_number, clock_speed, run_event, co
             connections[other_id] = sock
 
     print(f"Machine {machine_id} waiting for signal to start message exchange")
-    run_mesages.wait()
 
     # On start log the machine starting
     log_filename = f"machine_{machine_id}.log"
@@ -33,7 +33,7 @@ def instruction_performer(message_queue, port_number, clock_speed, run_event, co
     log_message(log_file, "INITIAL", f"Machine {machine_id} initialized with clock speed {clock_speed}", clock, message_queue.qsize())
 
     # Run while the run_event is true
-    while run_event.is_set():
+    while True:
         second_start = time.time()
         for _ in range(clock_speed):
             if not message_queue.empty():
@@ -233,12 +233,12 @@ def connect_to_other_machines(machine_id):
 
 
 # Runs the machine (turns into listening thread)
-def run_machine(clock_speed, port_number, run_event, run_mesages):
+def run_machine(clock_speed, port_number):
     message_queue = Queue(maxsize=0)
     connections = {}
     connections_lock = threading.Lock()
     # Thread that handles instruction execution gets spawned here
-    worker = threading.Thread(target=instruction_performer, args=(message_queue, port_number, clock_speed, run_event, connections, connections_lock, run_mesages))
+    worker = threading.Thread(target=instruction_performer, args=(message_queue, port_number, clock_speed, connections, connections_lock))
     worker.start()
 
 
@@ -254,7 +254,7 @@ def run_machine(clock_speed, port_number, run_event, run_mesages):
     sel.register(lsock, selectors.EVENT_READ, data=None)
 
     # Listening socket loop (until we get keyboard interrupted)
-    while run_event.is_set():
+    while True:
         # Negative timeout is used to not block so that we can exit the loop on a keyboard interrupt
         events = sel.select(timeout=.1)
         for key, mask in events:
@@ -271,15 +271,15 @@ def run_machine(clock_speed, port_number, run_event, run_mesages):
 def main():
     clock_speeds = [random.randint(1,6) for i in range(3)]
     # run_event controls when the machines are running (allows for graceful thread closure)
-    run_event = threading.Event()
-    run_event.set()
+    # run_event = threading.Event()
+    # run_event.set()
     # run_messages controls when the machines are sending messages
-    run_mesages = threading.Event()
+    # run_mesages = threading.Event()
 
     # Start each "machine" in a separate thread
-    m1 = threading.Thread(target = run_machine, args = (clock_speeds[0], 5001, run_event, run_mesages))
-    m2 = threading.Thread(target = run_machine, args = (clock_speeds[1], 5002, run_event, run_mesages))
-    m3 = threading.Thread(target = run_machine, args = (clock_speeds[2], 5003, run_event, run_mesages))
+    m1 = Process(target=run_machine, args=(clock_speeds[0], 5001), daemon=True)
+    m2 = Process(target = run_machine, args = (clock_speeds[1], 5002), daemon=True)
+    m3 = Process(target = run_machine, args = (clock_speeds[2], 5003), daemon=True)
     m1.start()
     time.sleep(0.5)
     m2.start()
@@ -291,12 +291,12 @@ def main():
 
     try:
         # TODO: probably make this more elegant
-        run_mesages.set()
+        # run_mesages.set()
         time.sleep(60)
     except KeyboardInterrupt:
         print("Caught keyboard interrupt, exiting")
         print("Attempting to close threads")
-        run_event.clear()
+        # run_event.clear()
         m1.join()
         m2.join()
         m3.join()
