@@ -1,4 +1,4 @@
-from multiprocessing import Process
+from multiprocessing import Process, Event
 import threading
 import random
 from queue import Queue
@@ -14,7 +14,35 @@ import time
 
 dotenv.load_dotenv()
 
-def instruction_performer(message_queue, port_number, clock_speed, connections, connections_lock):
+# globals
+
+clock_speeds = [random.randint(1,6) for i in range(3)]
+# Basically changes the probability of sending a message to another machine
+MAX_ROLL = 10
+
+def instruction_performer(message_queue, port_number, clock_speed, connections, connections_lock, run_event):
+    """
+    This function simulates the behavior of a machine in a distributed system and performs lamport clock operations.
+    First it initializes the machine with a logical clock at time 0.
+    Then it waits for all machines to connect - using the connections_lock to ensure connections are added to the dict properly and
+    run_event to signal when the machines should start running and logging.
+    It then runs a loop that simulates the machine's behavior by performing the following operations:
+    1. If the message queue is not empty, it logs the message and updates the logical clock.
+    2. If the message queue is empty, it generates a random event (send message to another machine, send message to next machine, send message to all machines, or do nothing) and performs the event.
+    3. It then updates the logical clock.
+    4. It sleeps for the remainder of the second to ensure the machine runs at the specified clock
+    5. It repeats the loop until the run_event is false (60 seconds have passed).
+
+    Args:
+        message_queue (Queue): A queue to hold messages to be processed
+        port_number (int): port number of the machine
+        clock_speed (int): Machines simulated clock speed
+        connections (dict): A dictionary of connections to other machines for use in sending messages
+        connections_lock (threading.Lock): Ensure connections are added to the dict properly
+        run_event (multiprocessing.Event): To signal when the machines should start running and logging
+    """
+
+
     # Starts with logical clock at time 0
     clock = 0
     machine_id = port_number - 5001
@@ -25,7 +53,9 @@ def instruction_performer(message_queue, port_number, clock_speed, connections, 
         for other_id, sock in temp_connections.items():
             connections[other_id] = sock
 
-    print(f"Machine {machine_id} waiting for signal to start message exchange")
+
+    # wait for all machines to connect
+    run_event.wait()
 
     # On start log the machine starting
     log_filename = f"machine_{machine_id}.log"
@@ -43,8 +73,7 @@ def instruction_performer(message_queue, port_number, clock_speed, connections, 
                 clock = max(clock, message["time"]) + 1
                 log_message(log_file, "RECEIVE ", f"Receive machine {message['sender']}", clock, message_queue.qsize())
             else:
-                event = random.randint(1, 10)
-                # Send message based on event
+                event = random.randint(1, MAX_ROLL)
                 if event == 1:
                     if connections:
                         recipient_id = random.choice(list(connections.keys()))
@@ -82,10 +111,6 @@ def instruction_performer(message_queue, port_number, clock_speed, connections, 
                     log_message(log_file, "INTERNAL", "    No Details   ", clock, message_queue.qsize())
 
                 clock += 1
-
-                # system  true time
-                # logical time
-                # queue size
 
         # calc how long we've spent doing operations
         elapsed = time.time() - second_start
@@ -151,6 +176,7 @@ def service_connection(key, message_queue, sel):
                     sel.unregister(sock)
                     sock.close()
     except BlockingIOError:
+        # Basically if there's no data to read, just move on
         pass
 
     except Exception as e:
@@ -167,8 +193,6 @@ def service_connection(key, message_queue, sel):
             data.outb = data.outb[len(in_data):]
             # Convert data to json format
             in_data_json = json.loads(in_data)
-            # Print the message
-            print(f"Received message: {in_data_json}")
             # Adds message to the queue
             message_queue.put(in_data_json)
         except Exception as e:
@@ -190,18 +214,13 @@ def accept_wrapper(sock, sel, machine_id, connections, connections_lock):
     """
     conn, addr = sock.accept()
 
-
-    other_machine_id = None
     # Populate connections to use for sending messages
-    # For machines with higher IDs
     for other_id in range(machine_id):
         if other_id not in connections:
             with connections_lock:
                 connections[other_id] = conn
-                print(f"Machine {machine_id} registered connection from Machine {other_id}")
             break
 
-    print(f"Accepted connection from {addr}")
     conn.setblocking(False)
     data = types.SimpleNamespace(addr=addr, inb=b"", outb=b"", user=b"")
     events = selectors.EVENT_READ | selectors.EVENT_WRITE
@@ -227,18 +246,17 @@ def connect_to_other_machines(machine_id):
                     print(f"Machine {machine_id} connected to machine {other_machine_id}")
                     break
                 except Exception as e:
-                    print(f"Machine {machine_id} re-trying to connect to machine {other_machine_id}: {e}")
                     time.sleep(0.5)
     return machine_connections
 
 
 # Runs the machine (turns into listening thread)
-def run_machine(clock_speed, port_number):
+def run_machine(clock_speed, port_number, run_event):
     message_queue = Queue(maxsize=0)
     connections = {}
     connections_lock = threading.Lock()
     # Thread that handles instruction execution gets spawned here
-    worker = threading.Thread(target=instruction_performer, args=(message_queue, port_number, clock_speed, connections, connections_lock))
+    worker = threading.Thread(target=instruction_performer, args=(message_queue, port_number, clock_speed, connections, connections_lock, run_event))
     worker.start()
 
 
@@ -256,7 +274,7 @@ def run_machine(clock_speed, port_number):
     # Listening socket loop (until we get keyboard interrupted)
     while True:
         # Negative timeout is used to not block so that we can exit the loop on a keyboard interrupt
-        events = sel.select(timeout=.1)
+        events = sel.select(timeout=-1)
         for key, mask in events:
             if key.data is None:
                 # Accept a new connection
@@ -269,40 +287,32 @@ def run_machine(clock_speed, port_number):
     pass
 
 def main():
-    clock_speeds = [random.randint(1,6) for i in range(3)]
     # run_event controls when the machines are running (allows for graceful thread closure)
-    # run_event = threading.Event()
-    # run_event.set()
-    # run_messages controls when the machines are sending messages
-    # run_mesages = threading.Event()
+    run_event = Event()
 
-    # Start each "machine" in a separate thread
-    m1 = Process(target=run_machine, args=(clock_speeds[0], 5001), daemon=True)
-    m2 = Process(target = run_machine, args = (clock_speeds[1], 5002), daemon=True)
-    m3 = Process(target = run_machine, args = (clock_speeds[2], 5003), daemon=True)
+    # Start each "machine" in a separate Process
+    m1 = Process(target=run_machine, args=(clock_speeds[0], 5001, run_event), daemon=True)
+    m2 = Process(target = run_machine, args = (clock_speeds[1], 5002, run_event), daemon=True)
+    m3 = Process(target = run_machine, args = (clock_speeds[2], 5003, run_event), daemon=True)
     m1.start()
-    time.sleep(0.5)
     m2.start()
-    time.sleep(0.5)
     m3.start()
-
-    print("Waiting for machines to connect")
-    time.sleep(5)
 
     try:
         # TODO: probably make this more elegant
-        # run_mesages.set()
+        # wait for machines to connect to each other
+        time.sleep(5)
+        run_event.set()
         time.sleep(60)
     except KeyboardInterrupt:
         print("Caught keyboard interrupt, exiting")
-        print("Attempting to close threads")
-        # run_event.clear()
+        print("Attempting to close processes")
         m1.join()
         m2.join()
         m3.join()
         print("Threads successfully closed")
 
-    print("Exiting main thread")
+    print("Exiting main process")
     pass
 
 if __name__ == '__main__':
