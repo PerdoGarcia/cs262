@@ -37,6 +37,7 @@ class App(tk.Tk):
         self.geometry("800x600")
 
         # State variables
+        self.server_ports = [5001, 5002, 5003]
         self.current_user = None
         self.messages = []
         self.accounts = []
@@ -60,7 +61,7 @@ class App(tk.Tk):
         self.container.grid_columnconfigure(0, weight=1)
 
         # Connect to server and start read thread
-        threading.Thread(target=self.connect_to_server, daemon=True).start()
+        threading.Thread(target=self.connect_to_servers, daemon=True).start()
 
         self.frames = {}
         self.show_frame(Onboarding)
@@ -93,24 +94,35 @@ class App(tk.Tk):
         self.frames = {page: frame}
         frame.grid(row=0, column=0, sticky="nsew")
 
-    def connect_to_server(self):
-        print(f"Client attempting to connect to HOST={self.host}, PORT={self.port}")
-
-        while not self.is_connected:
+    def connect_to_servers(self):
+        self.is_connected = False
+        for port in self.server_ports:
+            print(f"Attempting to connect to server on port {port}")
+            channel = grpc.insecure_channel(f"{self.host}:{port}")
             try:
-                # https://stackoverflow.com/questions/45759491/how-to-know-if-a-grpc-server-is-available
-                grpc.channel_ready_future(self.channel).result(timeout=10)
+                grpc.channel_ready_future(channel).result(timeout=5)
+                self.channel = channel
+                self.connection = message_server_pb2_grpc.MessageServerStub(channel)
+                self.port = port
                 self.is_connected = True
-                print("Connected to server via gRPC.")
-                # If you use streaming RPCs for reading, start a thread here:
-                return True
+                print(f"Connected to server on port {port}")
+                threading.Thread(target=self.monitor_server_connection, daemon=True).start()
+                return
             except grpc.FutureTimeoutError:
-                print("Server not available yet, retrying...")
-                time.sleep(1)
+                print(f"Failed to connect to server on port {port}")
+                continue
             except Exception as e:
-                print(f"Failed to connect to server: {e}")
-                time.sleep(1)
+                print(f"Error in connect_to_servers: {e}")
+                continue
 
+
+        pass
+    # find master server by connecting to master server
+    def connect(self):
+        pass
+
+    def reconnect(self):
+        pass
 
 class Onboarding(tk.Frame):
     """Class for the login/signup page

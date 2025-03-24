@@ -20,6 +20,15 @@ service MessageServer {
     rpc DeleteAccount (DeleteAccountRequest) returns (DeleteAccountReply) {}
     // Gets any "instananeous delivery messages" waiting for a user
     rpc GetInstantaneousMessages (InstantaneousMessagesRequest) returns (InstantaneousMessagesReply) {}
+    // checks if server is currently the master
+    rpc IsMaster (IsMasterRequest) returns (IsMasterReply) {}
+    // Adds connections to other servers
+    rpc AddConnect (AddConnectRequest) returns (AddConnectReply) {}
+    // Forces a commit across all servers to agree
+    rpc Commit (CommitRequest) returns (CommitReply) {}
+    // Tells other servers that a server has disconnected
+    rpc Disconnect (DisconnectRequest) returns (DisconnectReply) {}
+
 }
 
 // The request message containing user's username and (hashed) password for account creation.
@@ -147,4 +156,42 @@ message InstantaneousMessagesReply {
     required bool success = 1;
     optional int32 numRead = 2;
     repeated Message messages = 3;
+}
+
+message IsMasterRequest {}
+
+message IsMasterReply {
+    required bool isMaster = 1;
+}
+
+message AddConnectRequest {
+    required int32 requestPort = 1;
+    required int32 replyPort = 2;
+}
+
+message AddConnectReply {
+    optional bool success = 1;
+    optional string errorMessage = 2;
+}
+
+message CommitRequest {
+    required int32 port = 1;
+    required string query = 2;
+    repeated string params = 3;
+}
+
+message CommitReply {
+    required bool success = 1;
+    optional string errorMessage = 2;
+}
+
+message DisconnectRequest {
+    required int32 requesterPort = 1;
+    required int32 replierPort = 2;
+    required bool isMaster = 3;
+}
+
+message DisconnectReply {
+    required bool success = 1;
+    optional string errorMessage = 2;
 }

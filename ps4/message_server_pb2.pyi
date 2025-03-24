@@ -182,3 +182,65 @@ class InstantaneousMessagesReply(_message.Message):
     numRead: int
     messages: _containers.RepeatedCompositeFieldContainer[InstantaneousMessagesReply.Message]
     def __init__(self, success: bool = ..., numRead: _Optional[int] = ..., messages: _Optional[_Iterable[_Union[InstantaneousMessagesReply.Message, _Mapping]]] = ...) -> None: ...
+
+class IsMasterRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class IsMasterReply(_message.Message):
+    __slots__ = ("isMaster",)
+    ISMASTER_FIELD_NUMBER: _ClassVar[int]
+    isMaster: bool
+    def __init__(self, isMaster: bool = ...) -> None: ...
+
+class AddConnectRequest(_message.Message):
+    __slots__ = ("requestPort", "replyPort")
+    REQUESTPORT_FIELD_NUMBER: _ClassVar[int]
+    REPLYPORT_FIELD_NUMBER: _ClassVar[int]
+    requestPort: int
+    replyPort: int
+    def __init__(self, requestPort: _Optional[int] = ..., replyPort: _Optional[int] = ...) -> None: ...
+
+class AddConnectReply(_message.Message):
+    __slots__ = ("success", "errorMessage")
+    SUCCESS_FIELD_NUMBER: _ClassVar[int]
+    ERRORMESSAGE_FIELD_NUMBER: _ClassVar[int]
+    success: bool
+    errorMessage: str
+    def __init__(self, success: bool = ..., errorMessage: _Optional[str] = ...) -> None: ...
+
+class CommitRequest(_message.Message):
+    __slots__ = ("port", "query", "params")
+    PORT_FIELD_NUMBER: _ClassVar[int]
+    QUERY_FIELD_NUMBER: _ClassVar[int]
+    PARAMS_FIELD_NUMBER: _ClassVar[int]
+    port: int
+    query: str
+    params: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, port: _Optional[int] = ..., query: _Optional[str] = ..., params: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class CommitReply(_message.Message):
+    __slots__ = ("success", "errorMessage")
+    SUCCESS_FIELD_NUMBER: _ClassVar[int]
+    ERRORMESSAGE_FIELD_NUMBER: _ClassVar[int]
+    success: bool
+    errorMessage: str
+    def __init__(self, success: bool = ..., errorMessage: _Optional[str] = ...) -> None: ...
+
+class DisconnectRequest(_message.Message):
+    __slots__ = ("requesterPort", "replierPort", "isMaster")
+    REQUESTERPORT_FIELD_NUMBER: _ClassVar[int]
+    REPLIERPORT_FIELD_NUMBER: _ClassVar[int]
+    ISMASTER_FIELD_NUMBER: _ClassVar[int]
+    requesterPort: int
+    replierPort: int
+    isMaster: bool
+    def __init__(self, requesterPort: _Optional[int] = ..., replierPort: _Optional[int] = ..., isMaster: bool = ...) -> None: ...
+
+class DisconnectReply(_message.Message):
+    __slots__ = ("success", "errorMessage")
+    SUCCESS_FIELD_NUMBER: _ClassVar[int]
+    ERRORMESSAGE_FIELD_NUMBER: _ClassVar[int]
+    success: bool
+    errorMessage: str
+    def __init__(self, success: bool = ..., errorMessage: _Optional[str] = ...) -> None: ...
