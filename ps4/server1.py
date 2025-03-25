@@ -85,6 +85,10 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
             reply.errorMessage is an empty string on success and an error message on failure
         """
         print("Trying to create account for ", request.username)
+        # If the server is not the master, simply return an error back to the client
+        if not self.is_master():
+            return message_server_pb2.CreateReply(success=False, errorMessage="ER0: connection error")
+
         with self.lock:
             # Check if the username already exists in the database
             self.cursor.execute(f'SELECT * FROM users WHERE username = "{request.username}"')
@@ -120,6 +124,10 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
             reply.errorMessage is an empty string on success and an error message on failure
         """
         print("Trying to login ", request.username)
+        # If the server is not the master, simply return an error back to the client
+        if not self.is_master():
+            return message_server_pb2.LoginReply(success=False, errorMessage="ER0: connection error")
+
         with self.lock:
             # Check if the username exists in the database
             self.cursor.execute(f'SELECT * FROM users WHERE username = "{request.username}"')
@@ -130,6 +138,9 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
                     # If you try to login twice for some reason nothing happens
                     self.cursor.execute(f'UPDATE users SET logged_in = 1 WHERE username = "{request.username}"')
                     self.connection.commit()
+                    query = f'UPDATE users SET logged_in = 1 WHERE username = "{request.username}"'
+                    params = []
+                    self.commit_all(query, params)
                     return message_server_pb2.LoginReply(success=True, errorMessage="")
                 else:
                     # error: incorrect password
@@ -155,6 +166,10 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
             reply.errorMessage is an empty string on success and an error message on failure
         """
         print("Trying to logout ", request.username)
+        # If the server is not the master, simply return an error back to the client
+        if not self.is_master():
+            return message_server_pb2.LogoutReply(success=False, errorMessage="ER0: connection error")
+
         with self.lock:
             # Check if the username exists in the database
             self.cursor.execute(f'SELECT * FROM users WHERE username = "{request.username}"')
@@ -187,6 +202,13 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
             reply.success is always True. This function cannot fail.
             reply.accounts is a list of all account names stored by the server.
         """
+        # If the server is not the master, simply return an error back to the client
+        if not self.is_master():
+            accountReply = message_server_pb2.ListAccountsReply()
+            accountReply.success = False
+            accountReply.accounts.extend([])
+            return accountReply
+
         with self.lock:
             self.cursor.execute(f'SELECT username FROM users')
             response = self.cursor.fetchall()
@@ -222,6 +244,10 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
             reply.errorMessage is an empty string on success and an error message on failure
         """
         print("Sending message from ", request.fromUser, " to ", request.toUser)
+        # If the server is not the master, simply return an error back to the client
+        if not self.is_master():
+            return message_server_pb2.SendMessageReplyToSender(success=False, errorMessage="ER0: connection error")
+
         with self.lock:
             # Check if the sending username exists in the database
             self.cursor.execute(f'SELECT * FROM users WHERE username = "{request.fromUser}"')
@@ -271,6 +297,10 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
                 Each message has the following keys: messageId, fromUser, time, message.
         """
         print("Reading ", request.numMessages, " messages for ", request.username)
+        # If the server is not the master, simply return an error back to the client
+        if not self.is_master():
+            return message_server_pb2.ReadMessagesReply(success=False, numRead=0, messages=[])
+
         with self.lock:
             # Check if username is in the database, if not there are no messages to read
             self.cursor.execute(f'SELECT * FROM users WHERE username = "{request.username}"')
@@ -322,6 +352,11 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
             reply.messages is a list of messages objects
                 Each message has the following keys: messageId, fromUser, time, message.
         """
+        print("Getting instant messages for ", request.username)
+        # If the server is not the master, simply return an error back to the client
+        if not self.is_master():
+            return message_server_pb2.InstantaneousMessagesReply(success=False, numRead=0, messages=[])
+
         with self.lock:
             # Check if username is in the database, if not there are no messages to read
             self.cursor.execute(f'SELECT * FROM users WHERE username = "{request.username}"')
@@ -374,6 +409,10 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
             reply.errorMessage is an empty string on success and an error message on failure
         """
         print("Deleting message", request.messageId, "from", request.username)
+        # If the server is not the master, simply return an error back to the client
+        if not self.is_master():
+            return message_server_pb2.DeleteMessagesReply(success=False, errorMessage="ER0: connection error")
+
         with self.lock:
             # Check if the username exists in the database
             self.cursor.execute(f'SELECT * FROM users WHERE username = "{request.username}"')
@@ -415,6 +454,10 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
             reply.errorMessage is an empty string on success and an error message on failure
         """
         print("Deleting account ", request.username)
+        # If the server is not the master, simply return an error back to the client
+        if not self.is_master():
+            return message_server_pb2.DeleteAccountReply(success=False, errorMessage="ER0: connection error")
+
         with self.lock:
             # Check if the username exists in the database
             self.cursor.execute(f'SELECT * FROM users WHERE username = "{request.username}"')
@@ -467,9 +510,18 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
         )
         try:
             reply = self.connections[port].Commit(request)
+            if not reply.success:
+                if port in self.connections:
+                    self.channels[port].close()
+                    self.channels.pop(port)
+                    self.connections.pop(port)
             return reply.success
         except Exception as e:
             print(f"Could not commit to port {port}")
+            if port in self.connections:
+                    self.channels[port].close()
+                    self.channels.pop(port)
+                    self.connections.pop(port)
             return False
 
 
@@ -527,6 +579,25 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
                     print(f"Disconnected from port {port}")
                 except Exception as e:
                     print(f"Could not disconnect from port {port}")
+
+
+    # replication functions
+    # server has to act like a client and server
+    # lowercase functions are client functions
+    # Uppercase functions are server functions
+
+    def is_master(self, port):
+        request = message_server_pb2.IsMasterRequest()
+        try:
+            reply = self.connections[port].IsMaster(request)
+            return reply.isMaster
+        except Exception as e:
+            print(f"Could not check if {port} is master")
+            return False
+
+    def IsMaster(self, request, context):
+        reply = message_server_pb2.IsMasterReply(isMaster=self.is_master)
+        return reply
 
 
     # lowest port connection is the master server
@@ -600,7 +671,6 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
             return True
         except grpc.FutureTimeoutError:
             return False
-
 
 
 # Handles new requests from clients
