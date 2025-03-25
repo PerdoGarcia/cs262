@@ -101,13 +101,14 @@ class App(tk.Tk):
             channel = grpc.insecure_channel(f"{self.host}:{port}")
             try:
                 grpc.channel_ready_future(channel).result(timeout=5)
-                self.channel = channel
-                self.connection = message_server_pb2_grpc.MessageServerStub(channel)
-                self.port = port
-                self.is_connected = True
-                print(f"Connected to server on port {port}")
-                threading.Thread(target=self.monitor_server_connection, daemon=True).start()
-                return
+                connection = message_server_pb2_grpc.MessageServerStub(channel)
+                request = message_server_pb2.IsMasterRequest()
+                if connection.IsMaster(request).isMaster:
+                    self.channel = channel
+                    self.connection = connection
+                    self.port = port
+                    self.is_connected = True
+                    return
             except grpc.FutureTimeoutError:
                 print(f"Failed to connect to server on port {port}")
                 continue
@@ -116,13 +117,15 @@ class App(tk.Tk):
                 continue
 
 
-        pass
-    # find master server by connecting to master server
-    def connect(self):
-        pass
+    def is_master(self, port):
+        request = message_server_pb2.IsMasterRequest()
+        try:
+            reply = self.connections[port].IsMaster(request)
+            return reply.isMaster
+        except Exception as e:
+            print(f"Could not check if {port} is master")
+            return False
 
-    def reconnect(self):
-        pass
 
 class Onboarding(tk.Frame):
     """Class for the login/signup page
@@ -187,15 +190,19 @@ class Onboarding(tk.Frame):
         request = message_server_pb2.LoginRequest(
                 username=username, password=hashed_password
                 )
+        try:
+            response = self.controller.connection.LoginAccount(request)
+            if response.success:
+                self.controller.current_user = username
+                self.controller.is_logged_in = True
+                self.leave_to_navigation()
+            else:
+                messagebox.showerror("Error", response.errorMessage)
 
-        response = self.controller.connection.LoginAccount(request)
-
-        if response.success:
-            self.controller.current_user = username
-            self.controller.is_logged_in = True
-            self.leave_to_navigation()
-        else:
-            messagebox.showerror("Error", response.errorMessage)
+        except Exception as e:
+            print(f"Error in handle_login: {e}")
+            self.connect_to_servers()
+            self.handle_login()
 
     def handle_create_account(self):
         """ Handles the account creation process for the user
@@ -219,15 +226,19 @@ class Onboarding(tk.Frame):
         request = message_server_pb2.CreateRequest(
             username=username, password=hashed_password
         )
-        response = self.controller.connection.CreateAccount(request)
 
-        if response.success:
-            self.controller.current_user = username
-            self.controller.is_logged_in = True
-            self.leave_to_navigation()
-        else:
-            messagebox.showerror("Error", response.errorMessage)
-
+        try:
+            response = self.controller.connection.CreateAccount(request)
+            if response.success:
+                self.controller.current_user = username
+                self.controller.is_logged_in = True
+                self.leave_to_navigation()
+            else:
+                messagebox.showerror("Error", response.errorMessage)
+        except Exception as e:
+            print(f"Error in handle_create_account: {e}")
+            self.connect_to_servers()
+            self.handle_create_account()
 
 class Navigation(tk.Frame):
     """
@@ -303,25 +314,35 @@ class Navigation(tk.Frame):
         request = message_server_pb2.DeleteAccountRequest(
             username=self.controller.current_user,
         )
-        response = self.controller.connection.DeleteAccount(request)
 
-        if response.success:
-            self.controller.reset_state()
-            self.controller.show_frame(Onboarding)
-        else:
-            messagebox.showerror("Error", response.errorMessage)
+        try:
+            response = self.controller.connection.DeleteAccount(request)
 
+            if response.success:
+                self.controller.reset_state()
+                self.controller.show_frame(Onboarding)
+            else:
+                messagebox.showerror("Error", response.errorMessage)
+        except Exception as e:
+            print(f"Error in on_delete_account: {e}")
+            self.controller.connect_to_servers()
+            self.on_delete_account()
 
     # Logout by sending message to server as well as updating the state
     def handle_logout(self):
         request = message_server_pb2.LogoutRequest(username=self.controller.current_user)
-        response = self.controller.connection.LogoutAccount(request)
+        try:
+            response = self.controller.connection.LogoutAccount(request)
 
-        if response.success:
-            self.controller.reset_state()
-            self.controller.show_frame(Onboarding)
-        else:
-            messagebox.showerror("Error", response.errorMessage)
+            if response.success:
+                self.controller.reset_state()
+                self.controller.show_frame(Onboarding)
+            else:
+                messagebox.showerror("Error", response.errorMessage)
+        except Exception as e:
+            print(f"Error in handle_logout: {e}")
+            self.controller.connect_to_servers()
+            self.handle_logout()
 
 class Chat(tk.Frame):
     """
@@ -393,11 +414,17 @@ class Chat(tk.Frame):
             time=timestamp,
             message=message
         )
-        response = self.controller.connection.SendMessage(request)
-        if response.success:
-            self.status_label.config(text="Message sent successfully", fg="green")
-        else:
-            self.status_label.config(text=response.errorMessage, fg="red")
+        try:
+            response = self.controller.connection.SendMessage(request)
+            if response.success:
+                self.status_label.config(text="Message sent successfully", fg="green")
+            else:
+                self.status_label.config(text=response.errorMessage, fg="red")
+        except Exception as e:
+            print(f"Error in on_button_click: {e}")
+            self.controller.connect_to_servers()
+            self.on_button_click()
+
 
 class MessageDisplay(tk.Frame):
     """
@@ -421,7 +448,6 @@ class MessageDisplay(tk.Frame):
 
         threading.Thread(target=self.poll_messages, daemon=True).start()
 
-
         request = message_server_pb2.ReadMessagesRequest(
             username=self.controller.current_user,
             numMessages=self.number_of_messages
@@ -439,7 +465,6 @@ class MessageDisplay(tk.Frame):
         else:
             messagebox.showerror("Error", response.errorMessage)
         self._setup_ui()
-
 
     def poll_messages(self):
         # First check if user is logged in
