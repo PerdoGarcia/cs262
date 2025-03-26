@@ -29,18 +29,25 @@ It will automatically find the
 ## Unit Testing
 ### Running Unit Tests
 ```
-python -m unittest server_unit_tests.py
+python unitTests.py
 ```
 
 ### SETUP
-- Ensure the server is running on the specified host/port (default: `127.0.0.1:54400`)
+- Ensure the server is running on the specified host/port 
 
 ## Environment Setup
 1. Create a `.env` file with the following variables:
    ```
-   HOST_SERVER=IP_FOR_SERVER_DEVICE
-   PORT_SERVER=PORT_NUMBER
-   SERVER_IP=0.0.0.0 or ""
+   HOST_SERVER="10.250.88.150"
+   PORT_SERVER=8080
+   SERVER_IP=""
+   HOST_SERVER_TESTING="0.0.0.0"
+   PORT_SERVER_TESTING=5000
+   GRPC_PORT = 5001
+   SERVER5001="10.250.160.176"
+   SERVER5002="10.250.160.176"
+   SERVER5003="10.250.52.166"
+
    ```
 
 ## Dependencies
