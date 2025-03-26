@@ -17,11 +17,7 @@ load_dotenv()
 class MessageServer(message_server_pb2_grpc.MessageServerServicer):
     """Provides methods that implement functionality of the message server."""
 
-    def __init__(self, port):
-        # self.accounts = {}
-        # self.logged_in_users = {}
-        # self.instantMessages = {}
-        # self.messageId = 0
+    def __init__(self, port, connect_on_init=True):
         # SQLite3 connection setup
         self.port = port
         self.ports = [5001, 5002, 5003]
@@ -67,9 +63,9 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
         # who the current master is
         self.current_master = None
         # connects to all servers
-        self.connect_all()
+        if connect_on_init:
+            self.connect_all()
         # heartbeat signal for the master
-        threading.Thread(target=self.heart_beat, daemon=True).start()
 
 
     def CreateAccount(self, request, context):
@@ -500,6 +496,17 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
     # Uppercase functions are server functions
 
     def commit_all(self, query, params):
+        """
+        Attempts to commit messages to all non-master servers for replication
+
+        Parameters
+        ----------
+        query: The query from the client (create user, send message, etc)
+        params: Params necessary for new database update
+        Returns
+        -------
+        None
+        """
         for port in list(self.connections.keys()):
             try:
                 if port != self.port:
@@ -511,6 +518,17 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
 
 
     def commit(self, port, query, params):
+        """
+        Attempts to commit messages to non-master servers for replication
+
+        Parameters
+        ----------
+        query: The query from the client (create user, send message, etc)
+        params: Params necessary for new database update
+        Returns
+        -------
+        bool : if the commit was successful or not
+        """
         request = message_server_pb2.CommitRequest(
             port=port,
             query=query,
@@ -530,6 +548,16 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
 
 
     def Commit(self, request, context):
+        """
+        Handles incoming commit messages from Master Server
+
+        Parameters
+        ----------
+        request: The request query defined from our proto file
+        Returns
+        -------
+        bool : if the commit was successful or not
+        """
         query = request.query
         params = request.params
         with self.lock:
@@ -551,7 +579,6 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
             isMaster=self.is_master
         )
 
-        # First perform the RPC call (without closing the channel first)
         try:
             reply = self.connections[port].Disconnect(request)
             print(f"Disconnected from port {port}")
@@ -674,9 +701,9 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
                 try:
                     channel = grpc.insecure_channel(f'localhost:{port}')
                     if self.health_check(channel):
+                        # signal other ports to connect to this port
                         self.channels[port] = channel
                         self.connections[port] = message_server_pb2_grpc.MessageServerStub(channel)
-                        # signal other ports to connect to this port
                         self.add_connect(port)
                         print(f"Connected to port {port} from {self.port}")
                     else:
@@ -685,6 +712,8 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
                     print(f"Could not connect to port {port}")
         # find master in all dbs
         self.find_master()
+        threading.Thread(target=self.heart_beat, daemon=True).start()
+
 
     # https://grpc.github.io/grpc/python/_modules/grpc.html#channel_ready_future
     def health_check(self, channel):
@@ -695,23 +724,21 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
             return False
 
     def heart_beat(self):
+        """
+        This function runs on a separate thread to handle incoming heart beat singles
+        """
         while True:
-            time.sleep(3)
+            time.sleep(4)
             if not self.is_master and self.current_master is not None:
-                # Perform heartbeat check
-                channel = grpc.insecure_channel(f'localhost:{self.current_master}')
+                # changed to reuse channel
                 try:
-                    grpc.channel_ready_future(channel).result(timeout=2)
-                    stub = message_server_pb2_grpc.MessageServerStub(channel)
                     request = message_server_pb2.IsMasterRequest()
-                    response = stub.IsMaster(request, timeout=2)
+                    response = self.connections[self.current_master].IsMaster(request, timeout=3)
                     if not response.isMaster:
-                        # If current master does not identify itself as master, trigger election
                         print("Master reported not master anymore.")
                         self.find_master()
                 except Exception as e:
                     print(f"Master heartbeat failed for port {self.current_master}: {e}")
-                    # disconnect from dead master and select new master
                     self.disconnect(self.current_master)
                     self.find_master()
 
