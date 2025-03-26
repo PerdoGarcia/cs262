@@ -45,6 +45,12 @@ class App(tk.Tk):
         self.is_logged_in = False
         self.is_connected = False
         self.number_of_messages = 5
+
+        self.ips = {
+            5001 : os.environ.get("SERVER5001"),
+            5002 : os.environ.get("SERVER5002"),
+            5003 : os.environ.get("SERVER5003"),
+        }
         # TODO: CHANGE BACK
         self.host = os.environ.get("HOST_SERVER_TESTING")
         self.port = int(os.environ.get("PORT_SERVER_TESTING"))
@@ -108,8 +114,8 @@ class App(tk.Tk):
 
         for port in self.server_ports:
             if port != failed_port:
-                print(f"Attempting to connect to server on port {port}")
-                channel = grpc.insecure_channel(f"{self.host}:{port}")
+                print(f"Attempting to connect to server {self.ips[port]} on port {port}")
+                channel = grpc.insecure_channel(f"{self.ips[port]}:{port}")
                 try:
                     grpc.channel_ready_future(channel).result(timeout=5)
                     connection = message_server_pb2_grpc.MessageServerStub(channel)

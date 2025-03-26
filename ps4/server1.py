@@ -24,6 +24,12 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
         self.db_filename = f'server_{port}.db'
         self.connection = sqlite3.connect(self.db_filename, check_same_thread=False)
         self.cursor = self.connection.cursor()
+
+        self.ips = {
+            5001 : os.environ.get("SERVER5001"),
+            5002 : os.environ.get("SERVER5002"),
+            5003 : os.environ.get("SERVER5003"),
+        }
         print("Connected to the database")
 
         # Creates table for users if it doesn't exist
@@ -679,7 +685,7 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
     def AddConnect(self, request, context):
         requestPort = request.requestPort
         try:
-            self.channels[requestPort] = grpc.insecure_channel(f'localhost:{requestPort}')
+            self.channels[requestPort] = grpc.insecure_channel(f'{self.ips[requestPort]}:{requestPort}')
             self.connections[requestPort] = message_server_pb2_grpc.MessageServerStub(self.channels[requestPort])
             reply = message_server_pb2.AddConnectReply(success=True)
             print(f"Connected to port {requestPort}")
@@ -699,7 +705,7 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
         for port in self.ports:
             if port != self.port:
                 try:
-                    channel = grpc.insecure_channel(f'localhost:{port}')
+                    channel = grpc.insecure_channel(f'{self.ips[port]}:{port}')
                     if self.health_check(channel):
                         # signal other ports to connect to this port
                         self.channels[port] = channel
@@ -752,6 +758,7 @@ def serve():
         message_server_pb2_grpc.add_MessageServerServicer_to_server(
             message_server, server
         )
+
         server.add_insecure_port("[::]:" + str(port))
         server.start()
         server.wait_for_termination()
