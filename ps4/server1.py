@@ -7,7 +7,7 @@ import grpc
 import message_server_pb2
 import message_server_pb2_grpc
 import threading
-
+import time
 from concurrent import futures
 import sqlite3
 
@@ -58,12 +58,18 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
         self.lock = threading.Lock()
 
         # replication
+        # contains the port numbers as keys and their connections
         self.connections = {}
+        # contains the stubs to the other servers
         self.channels = {}
+        # if the current server is the current master
         self.is_master = False
+        # who the current master is
         self.current_master = None
-
+        # connects to all servers
         self.connect_all()
+        # heartbeat signal for the master
+        threading.Thread(target=self.heart_beat, daemon=True).start()
 
 
     def CreateAccount(self, request, context):
@@ -86,7 +92,7 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
         """
         print("Trying to create account for ", request.username)
         # If the server is not the master, simply return an error back to the client
-        if not self.is_master():
+        if not self.is_master:
             return message_server_pb2.CreateReply(success=False, errorMessage="ER0: connection error")
 
         with self.lock:
@@ -125,7 +131,7 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
         """
         print("Trying to login ", request.username)
         # If the server is not the master, simply return an error back to the client
-        if not self.is_master():
+        if not self.is_master:
             return message_server_pb2.LoginReply(success=False, errorMessage="ER0: connection error")
 
         with self.lock:
@@ -167,7 +173,7 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
         """
         print("Trying to logout ", request.username)
         # If the server is not the master, simply return an error back to the client
-        if not self.is_master():
+        if not self.is_master:
             return message_server_pb2.LogoutReply(success=False, errorMessage="ER0: connection error")
 
         with self.lock:
@@ -203,7 +209,7 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
             reply.accounts is a list of all account names stored by the server.
         """
         # If the server is not the master, simply return an error back to the client
-        if not self.is_master():
+        if not self.is_master:
             accountReply = message_server_pb2.ListAccountsReply()
             accountReply.success = False
             accountReply.accounts.extend([])
@@ -245,7 +251,7 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
         """
         print("Sending message from ", request.fromUser, " to ", request.toUser)
         # If the server is not the master, simply return an error back to the client
-        if not self.is_master():
+        if not self.is_master:
             return message_server_pb2.SendMessageReplyToSender(success=False, errorMessage="ER0: connection error")
 
         with self.lock:
@@ -298,7 +304,7 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
         """
         print("Reading ", request.numMessages, " messages for ", request.username)
         # If the server is not the master, simply return an error back to the client
-        if not self.is_master():
+        if not self.is_master:
             return message_server_pb2.ReadMessagesReply(success=False, numRead=0, messages=[])
 
         with self.lock:
@@ -354,7 +360,7 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
         """
         print("Getting instant messages for ", request.username)
         # If the server is not the master, simply return an error back to the client
-        if not self.is_master():
+        if not self.is_master:
             return message_server_pb2.InstantaneousMessagesReply(success=False, numRead=0, messages=[])
 
         with self.lock:
@@ -410,7 +416,7 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
         """
         print("Deleting message", request.messageId, "from", request.username)
         # If the server is not the master, simply return an error back to the client
-        if not self.is_master():
+        if not self.is_master:
             return message_server_pb2.DeleteMessagesReply(success=False, errorMessage="ER0: connection error")
 
         with self.lock:
@@ -437,6 +443,7 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
             else:
                 return message_server_pb2.DeleteMessagesReply(success=False, errorMessage="ER3: attempting to delete a message from an account that does not exist")
 
+
     def DeleteAccount(self, request, context):
         """
         Deletes a account with the given username.
@@ -455,7 +462,7 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
         """
         print("Deleting account ", request.username)
         # If the server is not the master, simply return an error back to the client
-        if not self.is_master():
+        if not self.is_master:
             return message_server_pb2.DeleteAccountReply(success=False, errorMessage="ER0: connection error")
 
         with self.lock:
@@ -499,6 +506,7 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
                     self.commit(port, query, params)
                     print(f"Committed to port {port}")
             except Exception as e:
+                self.disconnect(port)
                 print(f"Could not commit to port {port}")
 
 
@@ -518,10 +526,6 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
             return reply.success
         except Exception as e:
             print(f"Could not commit to port {port}")
-            if port in self.connections:
-                    self.channels[port].close()
-                    self.channels.pop(port)
-                    self.connections.pop(port)
             return False
 
 
@@ -541,34 +545,44 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
 
 
     def disconnect(self, port):
-        if port in self.connections:
-            self.channels[port].close()
         request = message_server_pb2.DisconnectRequest(
-            requestPort=self.port
+            requesterPort=self.port,
+            replierPort=port,
+            isMaster=self.is_master
         )
+
+        # First perform the RPC call (without closing the channel first)
         try:
             reply = self.connections[port].Disconnect(request)
             print(f"Disconnected from port {port}")
-            return reply.success
         except Exception as e:
-            print(f"Could not disconnect from port {port}")
-            return False
-
-
-    def Disconnect(self, request, context):
-        requestPort = request.requestPort
-        if requestPort in self.connections:
-            self.channels[requestPort].close()
-        try:
-            self.channels.pop(requestPort)
-            self.connections.pop(requestPort)
-            reply = message_server_pb2.DisconnectReply(success=True)
-            print(f"Disconnected from port {requestPort}")
-            return reply
-        except Exception as e:
+            print(f"Could not disconnect from port {port}: {e}")
             reply = message_server_pb2.DisconnectReply(success=False, errorMessage=f"Could not disconnect: {e}")
-            return reply
 
+        if port in self.channels:
+            self.channels[port].close()
+            del self.channels[port]
+        if port in self.connections:
+            del self.connections[port]
+
+        self.find_master()
+
+        return reply
+
+
+    def Disconnect(self, request: message_server_pb2.DisconnectRequest, context):
+        port = request.requesterPort
+        print(f"Received disconnect request from {port}")
+        if port in self.connections:
+            del self.connections[port]
+        if port in self.channels:
+            self.channels[port].close()
+            del self.channels[port]
+        print("Disconnect successful")
+        reply = message_server_pb2.DisconnectReply(success=True, errorMessage="")
+        if request.isMaster:
+            self.find_master()
+        return reply
 
     def disconnect_all(self):
         # disconnect from all connections
@@ -581,12 +595,7 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
                     print(f"Could not disconnect from port {port}")
 
 
-    # replication functions
-    # server has to act like a client and server
-    # lowercase functions are client functions
-    # Uppercase functions are server functions
-
-    def is_master(self, port):
+    def is_master_helper(self, port):
         request = message_server_pb2.IsMasterRequest()
         try:
             reply = self.connections[port].IsMaster(request)
@@ -602,20 +611,28 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
 
     # lowest port connection is the master server
     def find_master(self):
+        """
+        Find and elect a new master server when needed.
+        This method is called when:
+        1. A server starts up
+        2. A connection to a server fails
+        3. A server detects the master is unreachable
+        """
         print("Finding new master")
+        # active ports
         active_ports = list(self.connections.keys()) + [self.port]
         active_ports.sort()
         print("Active ports:", active_ports)
 
         new_master = active_ports[0]
-        self.master = new_master
+        self.current_master = new_master
 
         if new_master == self.port:
             self.is_master = True
-            print(f"{self.port} is now the master")
+            print("I am now the master")
         else:
             self.is_master = False
-            print(f"Port {new_master} is the new master")
+            print("Port {} is the new master".format(new_master))
 
 
     def add_connect(self, port):
@@ -639,10 +656,15 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
             self.connections[requestPort] = message_server_pb2_grpc.MessageServerStub(self.channels[requestPort])
             reply = message_server_pb2.AddConnectReply(success=True)
             print(f"Connected to port {requestPort}")
-            print("Active ports:", self.connections.keys())
+            self.find_master()
             return reply
         except Exception as e:
-            reply = message_server_pb2.AddConnectReply(success=False, errorMessage=f"Could not connect: {e}")
+            # Better error handling
+            error_type = type(e).__name__
+            error_msg = str(e) if str(e) else "No error message"
+            print(f"Error in AddConnect: {error_type}, Message: {error_msg}")
+            reply = message_server_pb2.AddConnectReply(success=False,
+                                    errorMessage=f"Could not connect: {error_type}: {error_msg}")
             return reply
 
 
@@ -658,10 +680,10 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
                         self.add_connect(port)
                         print(f"Connected to port {port} from {self.port}")
                     else:
-
                         print(f"Could not connect to port {port}")
                 except Exception as e:
                     print(f"Could not connect to port {port}")
+        # find master in all dbs
         self.find_master()
 
     # https://grpc.github.io/grpc/python/_modules/grpc.html#channel_ready_future
@@ -671,6 +693,27 @@ class MessageServer(message_server_pb2_grpc.MessageServerServicer):
             return True
         except grpc.FutureTimeoutError:
             return False
+
+    def heart_beat(self):
+        while True:
+            time.sleep(3)
+            if not self.is_master and self.current_master is not None:
+                # Perform heartbeat check
+                channel = grpc.insecure_channel(f'localhost:{self.current_master}')
+                try:
+                    grpc.channel_ready_future(channel).result(timeout=2)
+                    stub = message_server_pb2_grpc.MessageServerStub(channel)
+                    request = message_server_pb2.IsMasterRequest()
+                    response = stub.IsMaster(request, timeout=2)
+                    if not response.isMaster:
+                        # If current master does not identify itself as master, trigger election
+                        print("Master reported not master anymore.")
+                        self.find_master()
+                except Exception as e:
+                    print(f"Master heartbeat failed for port {self.current_master}: {e}")
+                    # disconnect from dead master and select new master
+                    self.disconnect(self.current_master)
+                    self.find_master()
 
 
 # Handles new requests from clients
