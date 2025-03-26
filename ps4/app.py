@@ -228,7 +228,7 @@ class Onboarding(tk.Frame):
         except Exception as e:
             print(f"Error in handle_login: {e}")
             self.controller.connect_to_servers()
-            # self.handle_login()
+            self.after(1000, self.handle_login)
 
     def handle_create_account(self):
         """ Handles the account creation process for the user
@@ -264,7 +264,7 @@ class Onboarding(tk.Frame):
         except Exception as e:
             print(f"Error in handle_create_account: {e}")
             self.controller.connect_to_servers()
-            # self.handle_create_account()
+            self.after(1000, self.handle_create_account)
 
 class Navigation(tk.Frame):
     """
@@ -351,8 +351,8 @@ class Navigation(tk.Frame):
                 messagebox.showerror("Error", response.errorMessage)
         except Exception as e:
             print(f"Error in on_delete_account: {e}")
-            # self.controller.connect_to_servers()
-            # self.on_delete_account()
+            self.controller.connect_to_servers()
+            self.after(1000, self.on_delete_account)
 
     # Logout by sending message to server as well as updating the state
     def handle_logout(self):
@@ -368,7 +368,7 @@ class Navigation(tk.Frame):
         except Exception as e:
             print(f"Error in handle_logout: {e}")
             self.controller.connect_to_servers()
-            # self.handle_logout()
+            self.after(1000, self.handle_logout)
 
 class Chat(tk.Frame):
     """
@@ -449,7 +449,7 @@ class Chat(tk.Frame):
         except Exception as e:
             print(f"Error in on_button_click: {e}")
             self.controller.connect_to_servers()
-            # self.on_button_click()
+            self.after(2000, self.on_button_click)
 
 
 class MessageDisplay(tk.Frame):
@@ -498,6 +498,7 @@ class MessageDisplay(tk.Frame):
         except Exception as e:
             print(f"Error in MessageDisplay: {e}")
             self.controller.connect_to_servers()
+            self.after(2000, self.get_messages)
 
 
     def poll_messages(self):
@@ -525,7 +526,7 @@ class MessageDisplay(tk.Frame):
             self.refresh_display()
         except Exception as e:
             self.controller.connect_to_servers()
-            # self.poll_messages()
+            self.after(2000, self.poll_messages)
             print(f"Error in poll_messages: {e}")
 
         self.after_id = self.after(500, self.poll_messages)
@@ -624,7 +625,7 @@ class MessageDisplay(tk.Frame):
         except Exception as e:
             print(f"Error in refresh_display: {e}")
             self.controller.connect_to_servers()
-            # self.refresh_display()
+            self.after(2000, self.refresh_display)
             return
 
     def set_message_count(self):
@@ -634,9 +635,8 @@ class MessageDisplay(tk.Frame):
             if not new_count or not new_count.isdigit():
                 print("Invalid input:", new_count)
                 return
-
             self.number_of_messages = int(new_count)
-            self.refresh_display()
+            self.after(2000, self.refresh_display)
 
         except ValueError as e:
             print("Error:", e)
@@ -681,7 +681,7 @@ class MessageDisplay(tk.Frame):
         except:
             print("Error in delete_message")
             self.controller.connect_to_servers()
-            # self.delete_message()
+            self.after(2000, self.delete_message)
 
 class SearchAccount(tk.Frame):
     # todo fix this shit
@@ -727,7 +727,7 @@ class SearchAccount(tk.Frame):
         except:
             print("Error in update_accounts")
             self.controller.connect_to_servers()
-            # self.update_accounts()
+            self.after(2000, self.update_accounts)
 
     def display_accounts(self, filter_text=None):
         # Always display if we have a filter_text, regardless of whether accounts changed
