@@ -471,10 +471,10 @@ class MessageDisplay(tk.Frame):
         tk.Frame.__init__(self, parent)
         self.controller = controller
         self.number_of_messages = 10
-
-        threading.Thread(target=self.poll_messages, daemon=True).start()
-        self.get_messages(self.number_of_messages)
         self._setup_ui()
+        threading.Thread(target=self.poll_messages, daemon=True).start()
+        self.get_messages()
+
 
 
     def get_messages(self):
@@ -498,7 +498,6 @@ class MessageDisplay(tk.Frame):
         except Exception as e:
             print(f"Error in MessageDisplay: {e}")
             self.controller.connect_to_servers()
-            # self.get_messages()
 
 
     def poll_messages(self):
