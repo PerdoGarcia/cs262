@@ -48,8 +48,6 @@ class App(tk.Tk):
         # TODO: CHANGE BACK
         self.host = os.environ.get("HOST_SERVER_TESTING")
         self.port = int(os.environ.get("PORT_SERVER_TESTING"))
-
-
         self.channel = grpc.insecure_channel(f"{self.host}:{self.port}")
         # stub for server communication
         self.connection = message_server_pb2_grpc.MessageServerStub(self.channel)
@@ -95,26 +93,47 @@ class App(tk.Tk):
         frame.grid(row=0, column=0, sticky="nsew")
 
     def connect_to_servers(self):
+        """
+        This function connects to the master server on startup or
+        server goes down on request
+        1. Iterate to find an available server
+        2. Asks server who the current master is
+        3. Connects to said server
+        """
+        print("Reconnecting to servers")
+        failed_port = self.port
+        self.channel = None
+        self.connection = None
         self.is_connected = False
+
         for port in self.server_ports:
-            print(f"Attempting to connect to server on port {port}")
-            channel = grpc.insecure_channel(f"{self.host}:{port}")
-            try:
-                grpc.channel_ready_future(channel).result(timeout=5)
-                connection = message_server_pb2_grpc.MessageServerStub(channel)
-                request = message_server_pb2.IsMasterRequest()
-                if connection.IsMaster(request).isMaster:
-                    self.channel = channel
-                    self.connection = connection
-                    self.port = port
-                    self.is_connected = True
-                    return
-            except grpc.FutureTimeoutError:
-                print(f"Failed to connect to server on port {port}")
-                continue
-            except Exception as e:
-                print(f"Error in connect_to_servers: {e}")
-                continue
+            if port != failed_port:
+                print(f"Attempting to connect to server on port {port}")
+                channel = grpc.insecure_channel(f"{self.host}:{port}")
+                try:
+                    grpc.channel_ready_future(channel).result(timeout=5)
+                    connection = message_server_pb2_grpc.MessageServerStub(channel)
+                    request = message_server_pb2.IsMasterRequest()
+                    if connection.IsMaster(request).isMaster:
+                        self.channel = channel
+                        self.connection = connection
+                        self.port = port
+                        self.is_connected = True
+                        print(f"Connected to master server on port {port}")
+                        return
+                    else:
+                        connection = None
+                        channel = None
+                except grpc.FutureTimeoutError:
+                    print(f"Failed to connect to server on port {port}")
+                    continue
+                except Exception as e:
+                    print(f"Error in connect_to_servers: {e}")
+                    continue
+
+        if not self.is_connected:
+            print("Error: no connection found.")
+            print("Error: no master found.")
 
 
     def is_master(self, port):
@@ -126,6 +145,13 @@ class App(tk.Tk):
             print(f"Could not check if {port} is master")
             return False
 
+
+    def health_check(self,channel):
+        try:
+            grpc.channel_ready_future(channel).result(timeout=2)
+            return True
+        except grpc.FutureTimeoutError:
+            return False
 
 class Onboarding(tk.Frame):
     """Class for the login/signup page
@@ -201,8 +227,8 @@ class Onboarding(tk.Frame):
 
         except Exception as e:
             print(f"Error in handle_login: {e}")
-            self.connect_to_servers()
-            self.handle_login()
+            self.controller.connect_to_servers()
+            # self.handle_login()
 
     def handle_create_account(self):
         """ Handles the account creation process for the user
@@ -237,8 +263,8 @@ class Onboarding(tk.Frame):
                 messagebox.showerror("Error", response.errorMessage)
         except Exception as e:
             print(f"Error in handle_create_account: {e}")
-            self.connect_to_servers()
-            self.handle_create_account()
+            self.controller.connect_to_servers()
+            # self.handle_create_account()
 
 class Navigation(tk.Frame):
     """
@@ -325,8 +351,8 @@ class Navigation(tk.Frame):
                 messagebox.showerror("Error", response.errorMessage)
         except Exception as e:
             print(f"Error in on_delete_account: {e}")
-            self.controller.connect_to_servers()
-            self.on_delete_account()
+            # self.controller.connect_to_servers()
+            # self.on_delete_account()
 
     # Logout by sending message to server as well as updating the state
     def handle_logout(self):
@@ -342,7 +368,7 @@ class Navigation(tk.Frame):
         except Exception as e:
             print(f"Error in handle_logout: {e}")
             self.controller.connect_to_servers()
-            self.handle_logout()
+            # self.handle_logout()
 
 class Chat(tk.Frame):
     """
@@ -423,7 +449,7 @@ class Chat(tk.Frame):
         except Exception as e:
             print(f"Error in on_button_click: {e}")
             self.controller.connect_to_servers()
-            self.on_button_click()
+            # self.on_button_click()
 
 
 class MessageDisplay(tk.Frame):
@@ -447,24 +473,33 @@ class MessageDisplay(tk.Frame):
         self.number_of_messages = 10
 
         threading.Thread(target=self.poll_messages, daemon=True).start()
+        self.get_messages(self.number_of_messages)
+        self._setup_ui()
 
+
+    def get_messages(self):
         request = message_server_pb2.ReadMessagesRequest(
             username=self.controller.current_user,
             numMessages=self.number_of_messages
         )
-        response = self.controller.connection.ReadMessages(request)
-        if response.success:
-            for msg in response.messages:
-                message = {
-                    "fromUser": msg.fromUser,
-                    "time": msg.time,
-                    "message": msg.message,
-                    "messageId": msg.messageId
-                }
-                self.controller.messages.append(message)
-        else:
-            messagebox.showerror("Error", response.errorMessage)
-        self._setup_ui()
+        try:
+            response = self.controller.connection.ReadMessages(request)
+            if response.success:
+                for msg in response.messages:
+                    message = {
+                        "fromUser": msg.fromUser,
+                        "time": msg.time,
+                        "message": msg.message,
+                        "messageId": msg.messageId
+                    }
+                    self.controller.messages.append(message)
+            else:
+                messagebox.showerror("Error", response.errorMessage)
+        except Exception as e:
+            print(f"Error in MessageDisplay: {e}")
+            self.controller.connect_to_servers()
+            # self.get_messages()
+
 
     def poll_messages(self):
         # First check if user is logged in
@@ -489,8 +524,9 @@ class MessageDisplay(tk.Frame):
                         self.controller.messages.append(message)
                     # Refresh the display
             self.refresh_display()
-
         except Exception as e:
+            self.controller.connect_to_servers()
+            # self.poll_messages()
             print(f"Error in poll_messages: {e}")
 
         self.after_id = self.after(500, self.poll_messages)
@@ -560,31 +596,37 @@ class MessageDisplay(tk.Frame):
             username=self.controller.current_user,
             numMessages=self.number_of_messages
         )
+        try:
+            response = self.controller.connection.ReadMessages(request)
 
-        response = self.controller.connection.ReadMessages(request)
+            if response.success:
+                if response.numRead > 0:
+                    for msg in response.messages:
+                        message = {
+                            "fromUser": msg.fromUser,
+                            "time": msg.time,
+                            "message": msg.message,
+                            "messageId": msg.messageId
+                        }
+                        self.controller.messages.append(message)
+            else:
+                messagebox.showerror("Error", response.errorMessage)
+                return
 
-        if response.success:
-            if response.numRead > 0:
-                for msg in response.messages:
-                    message = {
-                        "fromUser": msg.fromUser,
-                        "time": msg.time,
-                        "message": msg.message,
-                        "messageId": msg.messageId
-                    }
-                    self.controller.messages.append(message)
-        else:
-            messagebox.showerror("Error", response.errorMessage)
+            # Now display the messages
+            for msg in self.controller.messages[:self.number_of_messages]:
+                self.message_list.insert(tk.END, self._format_message(msg))
+
+            # Restore view state
+            if current_selection:
+                self.message_list.selection_set(current_selection)
+            self.message_list.yview_moveto(current_scroll[0])
+
+        except Exception as e:
+            print(f"Error in refresh_display: {e}")
+            self.controller.connect_to_servers()
+            # self.refresh_display()
             return
-
-        # Now display the messages
-        for msg in self.controller.messages[:self.number_of_messages]:
-            self.message_list.insert(tk.END, self._format_message(msg))
-
-        # Restore view state
-        if current_selection:
-            self.message_list.selection_set(current_selection)
-        self.message_list.yview_moveto(current_scroll[0])
 
     def set_message_count(self):
         """Handle message count change"""
@@ -629,13 +671,18 @@ class MessageDisplay(tk.Frame):
             username=self.controller.current_user,
             messageId=message_id
         )
-        response = self.controller.connection.DeleteMessages(request)
+        try:
+            response = self.controller.connection.DeleteMessages(request)
 
-        if not response.success:
-            messagebox.showerror("Error", response.errorMessage)
-        else:
-            self.controller.messages.pop(selection)
-            self.refresh_display()
+            if not response.success:
+                messagebox.showerror("Error", response.errorMessage)
+            else:
+                self.controller.messages.pop(selection)
+                self.refresh_display()
+        except:
+            print("Error in delete_message")
+            self.controller.connect_to_servers()
+            # self.delete_message()
 
 class SearchAccount(tk.Frame):
     # todo fix this shit
@@ -673,12 +720,15 @@ class SearchAccount(tk.Frame):
 
     def update_accounts(self):
         request = message_server_pb2.ListAccountsRequest()
-        response = self.controller.connection.ListAccounts(request)
-
-        if response.success:
-            self.controller.accounts = list(response.accounts)
-
-        self.display_accounts()
+        try:
+            response = self.controller.connection.ListAccounts(request)
+            if response.success:
+                self.controller.accounts = list(response.accounts)
+            self.display_accounts()
+        except:
+            print("Error in update_accounts")
+            self.controller.connect_to_servers()
+            # self.update_accounts()
 
     def display_accounts(self, filter_text=None):
         # Always display if we have a filter_text, regardless of whether accounts changed
